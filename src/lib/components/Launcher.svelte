@@ -243,10 +243,10 @@
           <span class="field-label">API Key <span class="hint">--api-key，留空则无需鉴权</span></span>
           <input class="input font-mono" type="text" bind:value={apiKey} placeholder="sk-..." autocomplete="off" />
         </label>
-        <label class="field">
-          <span class="field-label">CORS 允许来源 <span class="hint">--cors-allow-origins，* = 所有来源</span></span>
-          <input class="input font-mono" type="text" bind:value={corsAllowOrigins} placeholder="* 或 http://localhost:3000" />
-        </label>
+        <div class="field">
+          <span class="field-label">CORS</span>
+          <div class="cors-note">新版 llama-server 已内置允许所有来源，无需配置</div>
+        </div>
       </div>
       <div class="switch-row">
         <label class="switch-item">
@@ -570,6 +570,17 @@
 }
 
 /* ─ System prompt ─ */
+.cors-note {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 0 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
 .input.sys-prompt {
   height: auto;
   padding: 6px 8px;

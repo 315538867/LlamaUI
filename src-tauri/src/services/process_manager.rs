@@ -176,13 +176,6 @@ impl ProcessManager {
                     args.push(key.clone());
                 }
             }
-            // CORS allowed origins
-            if let Some(ref origins) = config.cors_allow_origins {
-                if !origins.is_empty() {
-                    args.push("--cors-allow-origins".into());
-                    args.push(origins.clone());
-                }
-            }
             // System prompt — write to temp file, pass via --system-prompt-file
             if let Some(ref sp) = config.system_prompt {
                 if !sp.is_empty() {
