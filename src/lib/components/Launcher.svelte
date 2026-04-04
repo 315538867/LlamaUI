@@ -110,79 +110,85 @@
   <div class="grid grid-cols-2 gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] p-3 lg:grid-cols-4">
     <!-- Model Selection -->
     <div class="col-span-2">
-      <label class="mb-1 block text-xs text-[var(--text-muted)]">模型</label>
-      <select
-        bind:value={selectedModel}
-        class="w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-      >
-        <option value="">选择模型...</option>
-        {#each modelStore.models as model}
-          <option value={model.path}>
-            {model.name} ({model.size_display}{model.quantization ? ` · ${model.quantization}` : ""})
-          </option>
-        {/each}
-      </select>
+      <label class="mb-1 block text-xs text-[var(--text-muted)]">模型
+        <select
+          bind:value={selectedModel}
+          class="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+        >
+          <option value="">选择模型...</option>
+          {#each modelStore.models as model}
+            <option value={model.path}>
+              {model.name} ({model.size_display}{model.quantization ? ` · ${model.quantization}` : ""})
+            </option>
+          {/each}
+        </select>
+      </label>
     </div>
 
     <!-- Mode -->
     <div>
-      <label class="mb-1 block text-xs text-[var(--text-muted)]">模式</label>
-      <select
-        bind:value={mode}
-        class="w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-      >
-        <option value="server">Server (HTTP API)</option>
-        <option value="cli">CLI (命令行)</option>
-      </select>
+      <label class="mb-1 block text-xs text-[var(--text-muted)]">模式
+        <select
+          bind:value={mode}
+          class="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+        >
+          <option value="server">Server (HTTP API)</option>
+          <option value="cli">CLI (命令行)</option>
+        </select>
+      </label>
     </div>
 
     <!-- GPU Layers -->
     <div>
-      <label class="mb-1 block text-xs text-[var(--text-muted)]">GPU 层数</label>
-      <input
-        type="number"
-        bind:value={gpuLayers}
-        min="-1"
-        max="999"
-        class="w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-      />
+      <label class="mb-1 block text-xs text-[var(--text-muted)]">GPU 层数
+        <input
+          type="number"
+          bind:value={gpuLayers}
+          min="-1"
+          max="999"
+          class="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+        />
+      </label>
     </div>
 
     <!-- Context Size -->
     <div>
-      <label class="mb-1 block text-xs text-[var(--text-muted)]">上下文长度</label>
-      <input
-        type="number"
-        bind:value={ctxSize}
-        min="128"
-        step="256"
-        class="w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-      />
+      <label class="mb-1 block text-xs text-[var(--text-muted)]">上下文长度
+        <input
+          type="number"
+          bind:value={ctxSize}
+          min="128"
+          step="256"
+          class="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+        />
+      </label>
     </div>
 
     <!-- Threads -->
     <div>
-      <label class="mb-1 block text-xs text-[var(--text-muted)]">线程数 (0=自动)</label>
-      <input
-        type="number"
-        bind:value={threads}
-        min="0"
-        max="256"
-        class="w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-      />
+      <label class="mb-1 block text-xs text-[var(--text-muted)]">线程数 (0=自动)
+        <input
+          type="number"
+          bind:value={threads}
+          min="0"
+          max="256"
+          class="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+        />
+      </label>
     </div>
 
     {#if mode === "server"}
       <!-- Port -->
       <div>
-        <label class="mb-1 block text-xs text-[var(--text-muted)]">端口</label>
-        <input
-          type="number"
-          bind:value={port}
-          min="1024"
-          max="65535"
-          class="w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-        />
+        <label class="mb-1 block text-xs text-[var(--text-muted)]">端口
+          <input
+            type="number"
+            bind:value={port}
+            min="1024"
+            max="65535"
+            class="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+          />
+        </label>
       </div>
 
       <!-- Toggles -->
@@ -200,13 +206,14 @@
 
     <!-- Extra Args -->
     <div class="col-span-2 lg:col-span-4">
-      <label class="mb-1 block text-xs text-[var(--text-muted)]">额外参数</label>
-      <input
-        type="text"
-        bind:value={extraArgs}
-        placeholder="--no-mmap --verbose ..."
-        class="w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-      />
+      <label class="mb-1 block text-xs text-[var(--text-muted)]">额外参数
+        <input
+          type="text"
+          bind:value={extraArgs}
+          placeholder="--no-mmap --verbose ..."
+          class="mt-1 w-full rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+        />
+      </label>
     </div>
   </div>
 
