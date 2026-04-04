@@ -12,14 +12,11 @@
 
   let activePage = $state<PageId>("launcher");
 
-  // Load config on mount
-  $effect(() => {
-    configStore.load();
-  });
+  $effect(() => { configStore.load(); });
 </script>
 
-<div class="flex h-full w-full flex-col">
-  <div class="flex min-h-0 flex-1">
+<div class="flex h-full w-full flex-col" style="background:var(--bg-base);">
+  <div class="flex min-h-0 flex-1 overflow-hidden">
     <Sidebar {activePage} onNavigate={(page) => (activePage = page)} />
 
     <main class="min-h-0 flex-1 overflow-hidden">

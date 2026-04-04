@@ -9,43 +9,30 @@
   let llamaPath = $state("");
   let detectedInstalls = $state<LlamaInstall[]>([]);
   let detecting = $state(false);
-  let newModelDir = $state("");
   let validationMsg = $state("");
 
   $effect(() => {
-    if (configStore.loaded) {
-      llamaPath = configStore.config.llama_dir ?? "";
-    }
+    if (configStore.loaded) llamaPath = configStore.config.llama_dir ?? "";
   });
 
   async function handleDetect() {
     detecting = true;
-    try {
-      detectedInstalls = await detectLlama();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      detecting = false;
-    }
+    try { detectedInstalls = await detectLlama(); }
+    catch (e) { console.error(e); }
+    finally { detecting = false; }
   }
 
   async function selectLlamaDir() {
     const result = await open({ directory: true, title: "选择 llama.cpp 目录" });
-    if (result) {
-      llamaPath = result as string;
-      await saveLlamaPath();
-    }
+    if (result) { llamaPath = result as string; await saveLlamaPath(); }
   }
 
   async function saveLlamaPath() {
     try {
       await validateLlamaPath(llamaPath);
       validationMsg = "";
-      const newConfig: AppConfig = { ...configStore.config, llama_dir: llamaPath };
-      await configStore.save(newConfig);
-    } catch (e) {
-      validationMsg = String(e);
-    }
+      await configStore.save({ ...configStore.config, llama_dir: llamaPath });
+    } catch (e) { validationMsg = String(e); }
   }
 
   function useDetected(install: LlamaInstall) {
@@ -56,101 +43,143 @@
   async function addModelDir() {
     const result = await open({ directory: true, title: "选择模型目录" });
     if (result && typeof result === "string") {
-      const dirs = [...configStore.config.model_dirs, result];
-      const newConfig: AppConfig = { ...configStore.config, model_dirs: dirs };
-      await configStore.save(newConfig);
+      await configStore.save({
+        ...configStore.config,
+        model_dirs: [...configStore.config.model_dirs, result],
+      });
     }
   }
 
   async function removeModelDir(dir: string) {
-    const dirs = configStore.config.model_dirs.filter((d) => d !== dir);
-    const newConfig: AppConfig = { ...configStore.config, model_dirs: dirs };
-    await configStore.save(newConfig);
+    await configStore.save({
+      ...configStore.config,
+      model_dirs: configStore.config.model_dirs.filter((d) => d !== dir),
+    });
   }
 </script>
 
-<div class="flex h-full flex-col gap-4 overflow-y-auto p-4">
-  <h2 class="text-lg font-semibold">设置</h2>
+<div class="flex h-full flex-col" style="background:var(--bg-base);">
 
-  <!-- llama.cpp Path -->
-  <section class="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4">
-    <h3 class="mb-3 text-sm font-medium">llama.cpp 路径</h3>
-    <div class="flex gap-2">
-      <input
-        type="text"
-        bind:value={llamaPath}
-        placeholder="llama.cpp 安装目录路径..."
-        class="flex-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-        onblur={saveLlamaPath}
-      />
-      <button
-        class="rounded-md border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-        onclick={selectLlamaDir}
-      >
-        浏览
-      </button>
-      <button
-        class="rounded-md border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-        onclick={handleDetect}
-        disabled={detecting}
-      >
-        {detecting ? "检测中..." : "自动检测"}
-      </button>
+  <!-- 顶部栏 -->
+  <div
+    class="flex shrink-0 items-center border-b px-4 py-3"
+    style="border-color:var(--border-subtle); background:var(--bg-surface);"
+  >
+    <div>
+      <h2 class="text-sm font-semibold" style="color:var(--text-base);">设置</h2>
+      <p class="text-xs" style="color:var(--text-muted);">配置 llama.cpp 路径与模型目录</p>
     </div>
-    {#if validationMsg}
-      <p class="mt-1 text-xs text-[var(--danger)]">{validationMsg}</p>
-    {/if}
-    {#if detectedInstalls.length > 0}
-      <div class="mt-2 flex flex-col gap-1">
-        <p class="text-xs text-[var(--text-muted)]">检测到 {detectedInstalls.length} 个安装:</p>
-        {#each detectedInstalls as install}
-          <button
-            class="flex items-center justify-between rounded border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)]"
-            onclick={() => useDetected(install)}
-          >
-            <span class="text-[var(--text-primary)]">{install.path}</span>
-            <span class="text-[var(--text-muted)]">
-              {install.has_server ? "server" : ""}{install.has_server && install.has_cli ? " + " : ""}{install.has_cli ? "cli" : ""}
-            </span>
-          </button>
-        {/each}
+  </div>
+
+  <div class="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+
+    <!-- llama.cpp 路径 -->
+    <section
+      class="rounded-lg border p-4"
+      style="background:var(--bg-surface); border-color:var(--border-subtle);"
+    >
+      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted);">
+        llama.cpp 路径
+      </h3>
+      <div class="flex gap-2">
+        <input
+          type="text"
+          bind:value={llamaPath}
+          placeholder="llama.cpp 安装目录路径..."
+          onblur={saveLlamaPath}
+          class="flex-1 rounded-md border px-2.5 py-1.5 text-xs"
+          style="background:var(--bg-elevated); border-color:var(--border-subtle); color:var(--text-base);"
+        />
+        <button
+          onclick={selectLlamaDir}
+          class="rounded-md border px-3 py-1.5 text-xs transition-colors"
+          style="border-color:var(--border); color:var(--text-secondary); background:var(--bg-elevated);"
+          onmouseenter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-hover)")}
+          onmouseleave={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)")}
+        >浏览</button>
+        <button
+          onclick={handleDetect}
+          disabled={detecting}
+          class="rounded-md border px-3 py-1.5 text-xs transition-colors"
+          style="border-color:var(--border); color:var(--text-secondary); background:var(--bg-elevated);"
+          onmouseenter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-hover)")}
+          onmouseleave={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)")}
+        >{detecting ? "检测中..." : "自动检测"}</button>
       </div>
-    {/if}
-  </section>
 
-  <!-- Model Directories -->
-  <section class="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4">
-    <div class="mb-3 flex items-center justify-between">
-      <h3 class="text-sm font-medium">模型目录</h3>
-      <button
-        class="rounded-md bg-[var(--accent)] px-3 py-1 text-xs text-white hover:bg-[var(--accent-hover)]"
-        onclick={addModelDir}
-      >
-        添加目录
-      </button>
-    </div>
-    {#if configStore.config.model_dirs.length === 0}
-      <p class="text-xs text-[var(--text-muted)]">未配置模型目录，请添加包含 .gguf 文件的目录</p>
-    {:else}
-      <div class="flex flex-col gap-1">
-        {#each configStore.config.model_dirs as dir}
-          <div class="flex items-center justify-between rounded border border-[var(--border-color)] bg-[var(--bg-tertiary)] px-2.5 py-1.5">
-            <span class="truncate text-xs text-[var(--text-primary)]">{dir}</span>
+      {#if validationMsg}
+        <p class="mt-2 text-xs" style="color:var(--danger);">{validationMsg}</p>
+      {/if}
+
+      {#if detectedInstalls.length > 0}
+        <div class="mt-3 space-y-1">
+          <p class="text-[11px] mb-1.5" style="color:var(--text-muted);">检测到 {detectedInstalls.length} 个安装：</p>
+          {#each detectedInstalls as install}
             <button
-              class="ml-2 text-xs text-[var(--text-muted)] hover:text-[var(--danger)]"
-              onclick={() => removeModelDir(dir)}
+              onclick={() => useDetected(install)}
+              class="flex w-full items-center justify-between rounded-md border px-2.5 py-2 text-left text-xs transition-colors"
+              style="background:var(--bg-elevated); border-color:var(--border-subtle); color:var(--text-base);"
+              onmouseenter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-hover)")}
+              onmouseleave={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)")}
             >
-              移除
+              <span class="truncate">{install.path}</span>
+              <span class="ml-3 shrink-0 text-[11px]" style="color:var(--text-muted);">
+                {[install.has_server ? "server" : "", install.has_cli ? "cli" : ""].filter(Boolean).join(" + ")}
+              </span>
             </button>
-          </div>
-        {/each}
-      </div>
-    {/if}
-  </section>
+          {/each}
+        </div>
+      {/if}
+    </section>
 
-  <!-- Default Parameters -->
-  <section class="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] p-4">
-    <h3 class="mb-3 text-sm font-medium">默认启动参数</h3>
-    <p class="text-xs text-[var(--text-muted)]">默认参数在启动器中自动填充，可在启动前覆盖</p>
-  </section>
+    <!-- 模型目录 -->
+    <section
+      class="rounded-lg border p-4"
+      style="background:var(--bg-surface); border-color:var(--border-subtle);"
+    >
+      <div class="mb-3 flex items-center justify-between">
+        <h3 class="text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted);">
+          模型目录
+        </h3>
+        <button
+          onclick={addModelDir}
+          class="rounded-md px-3 py-1 text-xs font-medium text-white transition-opacity hover:opacity-85"
+          style="background:var(--accent);"
+        >+ 添加目录</button>
+      </div>
+
+      {#if configStore.config.model_dirs.length === 0}
+        <p class="text-xs" style="color:var(--text-muted);">未配置模型目录，请添加包含 .gguf 文件的目录</p>
+      {:else}
+        <div class="space-y-1">
+          {#each configStore.config.model_dirs as dir}
+            <div
+              class="flex items-center justify-between rounded-md border px-2.5 py-2"
+              style="background:var(--bg-elevated); border-color:var(--border-subtle);"
+            >
+              <span class="truncate text-xs" style="color:var(--text-base);">{dir}</span>
+              <button
+                onclick={() => removeModelDir(dir)}
+                class="ml-3 shrink-0 text-xs transition-colors"
+                style="color:var(--text-muted);"
+                onmouseenter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--danger)")}
+                onmouseleave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")}
+              >移除</button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+
+    <!-- 默认参数（占位） -->
+    <section
+      class="rounded-lg border p-4"
+      style="background:var(--bg-surface); border-color:var(--border-subtle);"
+    >
+      <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted);">
+        默认启动参数
+      </h3>
+      <p class="text-xs" style="color:var(--text-muted);">默认参数在启动器中自动填充，可在启动前覆盖</p>
+    </section>
+  </div>
 </div>

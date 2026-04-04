@@ -1,3 +1,6 @@
+// 在 release 构建隐藏 Windows 命令行窗口，MCP stdio 管道通信不受影响
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::sync::Arc;
 
 fn main() {
