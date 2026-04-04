@@ -21,6 +21,13 @@ export interface LaunchConfig {
   host?: string;
   flash_attn?: boolean;
   cont_batching?: boolean;
+  batch_size?: number;
+  ubatch_size?: number;
+  parallel?: number;
+  cache_type_k?: string;
+  seed?: number;
+  mlock?: boolean;
+  no_mmap?: boolean;
   prompt?: string;
   predict?: number;
   extra_args?: string;
@@ -52,6 +59,13 @@ export interface LaunchParams {
   host: string | null;
   flash_attn: boolean | null;
   cont_batching: boolean | null;
+  batch_size: number | null;
+  ubatch_size: number | null;
+  parallel: number | null;
+  cache_type_k: string | null;
+  seed: number | null;
+  mlock: boolean | null;
+  no_mmap: boolean | null;
   extra_args: string | null;
 }
 

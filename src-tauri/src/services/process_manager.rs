@@ -126,11 +126,48 @@ impl ProcessManager {
             args.push("--port".into());
             args.push(port.to_string());
 
-            if config.flash_attn.unwrap_or(false) {
-                args.push("-fa".into());
-            }
+            // --flash-attn requires on|off value (not a bare flag)
+            args.push("--flash-attn".into());
+            args.push(if config.flash_attn.unwrap_or(false) { "on" } else { "off" }.into());
+
             if config.cont_batching.unwrap_or(true) {
                 args.push("--cont-batching".into());
+            }
+
+            // Batch size
+            if let Some(b) = config.batch_size {
+                args.push("-b".into());
+                args.push(b.to_string());
+            }
+            // Ubatch size
+            if let Some(ub) = config.ubatch_size {
+                args.push("-ub".into());
+                args.push(ub.to_string());
+            }
+            // Parallel decode slots
+            if let Some(np) = config.parallel {
+                args.push("--parallel".into());
+                args.push(np.to_string());
+            }
+            // KV cache quantization type
+            if let Some(ref kt) = config.cache_type_k {
+                if !kt.is_empty() {
+                    args.push("--cache-type-k".into());
+                    args.push(kt.clone());
+                }
+            }
+            // Seed
+            if let Some(seed) = config.seed {
+                args.push("--seed".into());
+                args.push(seed.to_string());
+            }
+            // Memory-lock
+            if config.mlock.unwrap_or(false) {
+                args.push("--mlock".into());
+            }
+            // No memory-map
+            if config.no_mmap.unwrap_or(false) {
+                args.push("--no-mmap".into());
             }
         }
 
