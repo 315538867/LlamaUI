@@ -21,7 +21,6 @@
     if (configStore.loaded && modelStore.models.length === 0) modelStore.refresh();
   });
 
-  // 量化类型对应颜色
   function quantColor(q: string | undefined): string {
     if (!q) return "var(--bg-overlay)";
     if (q.includes("Q8")) return "rgba(34,197,94,0.15)";
@@ -43,39 +42,25 @@
 <div class="flex h-full flex-col" style="background:var(--bg-base);">
 
   <!-- 顶部栏 -->
-  <div
-    class="flex shrink-0 items-center justify-between border-b px-4 py-3"
-    style="border-color:var(--border-subtle); background:var(--bg-surface);"
-  >
+  <div class="header flex shrink-0 items-center justify-between border-b px-4 py-3">
     <div>
       <h2 class="text-sm font-semibold" style="color:var(--text-base);">模型库</h2>
       <p class="text-xs" style="color:var(--text-muted);">管理本地 GGUF 模型文件</p>
     </div>
     <div class="flex items-center gap-2">
-      <!-- 视图切换 -->
-      <div class="flex rounded-md border overflow-hidden" style="border-color:var(--border-subtle);">
+      <div class="view-toggle flex overflow-hidden rounded-md border">
         <button
           onclick={() => (viewMode = "list")}
           class="px-2.5 py-1 text-[11px] transition-colors"
-          style={viewMode === "list"
-            ? "background:var(--bg-overlay); color:var(--text-base);"
-            : "background:var(--bg-surface); color:var(--text-muted);"}
+          class:active={viewMode === "list"}
         >列表</button>
         <button
           onclick={() => (viewMode = "grid")}
-          class="px-2.5 py-1 text-[11px] transition-colors border-l"
-          style={viewMode === "grid"
-            ? "background:var(--bg-overlay); color:var(--text-base); border-color:var(--border-subtle);"
-            : "background:var(--bg-surface); color:var(--text-muted); border-color:var(--border-subtle);"}
+          class="border-l px-2.5 py-1 text-[11px] transition-colors"
+          class:active={viewMode === "grid"}
         >网格</button>
       </div>
-      <button
-        onclick={() => modelStore.refresh()}
-        class="rounded-md border px-3 py-1 text-[11px] transition-colors"
-        style="border-color:var(--border-subtle); color:var(--text-secondary); background:var(--bg-surface);"
-        onmouseenter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-hover)")}
-        onmouseleave={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-surface)")}
-      >
+      <button class="btn-ghost rounded-md border px-3 py-1 text-[11px]" onclick={() => modelStore.refresh()}>
         刷新
       </button>
     </div>
@@ -87,8 +72,7 @@
       type="text"
       bind:value={searchQuery}
       placeholder="搜索模型名称或量化类型..."
-      class="w-full rounded-md border px-3 py-2 text-xs"
-      style="background:var(--bg-surface); border-color:var(--border-subtle); color:var(--text-base);"
+      class="search-input w-full rounded-md border px-3 py-2 text-xs"
     />
   </div>
 
@@ -111,15 +95,10 @@
     {:else if viewMode === "list"}
       <div class="flex flex-col gap-1">
         {#each filteredModels as model}
-          <div
-            class="flex items-center justify-between rounded-lg border px-3 py-2.5 transition-colors"
-            style="background:var(--bg-surface); border-color:var(--border-subtle);"
-            onmouseenter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-hover)")}
-            onmouseleave={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-surface)")}
-          >
+          <div class="model-row flex items-center justify-between rounded-lg border px-3 py-2.5">
             <div class="min-w-0 flex-1">
               <div class="truncate text-xs font-medium" style="color:var(--text-base);">{model.name}</div>
-              <div class="truncate text-[11px] mt-0.5" style="color:var(--text-muted);">{model.path}</div>
+              <div class="mt-0.5 truncate text-[11px]" style="color:var(--text-muted);">{model.path}</div>
             </div>
             <div class="flex shrink-0 items-center gap-2 pl-4">
               {#if model.quantization}
@@ -136,12 +115,7 @@
     {:else}
       <div class="grid grid-cols-2 gap-2 lg:grid-cols-3">
         {#each filteredModels as model}
-          <div
-            class="rounded-lg border p-3 transition-colors"
-            style="background:var(--bg-surface); border-color:var(--border-subtle);"
-            onmouseenter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-hover)")}
-            onmouseleave={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-surface)")}
-          >
+          <div class="model-card rounded-lg border p-3">
             <div class="truncate text-xs font-medium" style="color:var(--text-base);">{model.name}</div>
             <div class="mt-2 flex items-center gap-1.5">
               <span class="text-[11px]" style="color:var(--text-muted);">{model.size_display}</span>
@@ -159,13 +133,48 @@
   </div>
 
   <!-- 底部统计 -->
-  <div
-    class="shrink-0 border-t px-4 py-2 text-[11px]"
-    style="border-color:var(--border-subtle); color:var(--text-muted);"
-  >
+  <div class="shrink-0 border-t px-4 py-2 text-[11px]" style="border-color:var(--border-subtle); color:var(--text-muted);">
     {filteredModels.length} 个模型
     {#if configStore.config.model_dirs.length === 0}
       · <span style="color:var(--warning);">未配置模型目录</span>
     {/if}
   </div>
 </div>
+
+<style>
+  .header { border-color: var(--border-subtle); background: var(--bg-surface); }
+
+  .view-toggle { border-color: var(--border-subtle); }
+  .view-toggle button { background: var(--bg-surface); color: var(--text-muted); }
+  .view-toggle button.active { background: var(--bg-overlay); color: var(--text-base); }
+  .view-toggle .border-l { border-color: var(--border-subtle); }
+
+  .btn-ghost {
+    border-color: var(--border-subtle);
+    color: var(--text-secondary);
+    background: var(--bg-surface);
+  }
+  .btn-ghost:hover { background: var(--bg-hover); }
+
+  .search-input {
+    background: var(--bg-surface);
+    border-color: var(--border-subtle);
+    color: var(--text-base);
+  }
+  .search-input::placeholder { color: var(--text-muted); }
+  .search-input:focus { border-color: var(--accent); outline: none; }
+
+  .model-row {
+    background: var(--bg-surface);
+    border-color: var(--border-subtle);
+    transition: background 0.15s;
+  }
+  .model-row:hover { background: var(--bg-hover); }
+
+  .model-card {
+    background: var(--bg-surface);
+    border-color: var(--border-subtle);
+    transition: background 0.15s;
+  }
+  .model-card:hover { background: var(--bg-hover); }
+</style>

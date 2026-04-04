@@ -13,22 +13,13 @@
   });
 </script>
 
-<div
-  class="flex h-full flex-col overflow-hidden rounded-lg border"
-  style="background:#0d0d0f; border-color:var(--border-subtle);"
->
+<div class="terminal flex h-full flex-col overflow-hidden rounded-lg border">
   <!-- 工具栏 -->
-  <div
-    class="flex shrink-0 items-center justify-between border-b px-3 py-1.5"
-    style="border-color:var(--border-subtle); background:var(--bg-surface);"
-  >
+  <div class="toolbar flex shrink-0 items-center justify-between border-b px-3 py-1.5">
     <div class="flex items-center gap-2">
       <span class="text-[11px] font-medium" style="color:var(--text-secondary);">日志输出</span>
       {#if process.logs.length > 0}
-        <span
-          class="rounded px-1.5 py-0.5 text-[10px]"
-          style="background:var(--bg-overlay); color:var(--text-muted);"
-        >{process.logs.length}</span>
+        <span class="count rounded px-1.5 py-0.5 text-[10px]">{process.logs.length}</span>
       {/if}
     </div>
     <div class="flex items-center gap-3">
@@ -36,13 +27,7 @@
         <input type="checkbox" bind:checked={autoScroll} class="h-3 w-3 accent-blue-500" />
         自动滚动
       </label>
-      <button
-        onclick={() => process.clearLogs()}
-        class="rounded px-2 py-0.5 text-[11px] transition-colors"
-        style="color:var(--text-muted);"
-        onmouseenter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-base)")}
-        onmouseleave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")}
-      >
+      <button class="clear-btn rounded px-2 py-0.5 text-[11px]" onclick={() => process.clearLogs()}>
         清除
       </button>
     </div>
@@ -61,3 +46,11 @@
     {/if}
   </div>
 </div>
+
+<style>
+  .terminal { background: #0d0d0f; border-color: var(--border-subtle); }
+  .toolbar { border-color: var(--border-subtle); background: var(--bg-surface); }
+  .count { background: var(--bg-overlay); color: var(--text-muted); }
+  .clear-btn { color: var(--text-muted); transition: color 0.15s; }
+  .clear-btn:hover { color: var(--text-base); }
+</style>

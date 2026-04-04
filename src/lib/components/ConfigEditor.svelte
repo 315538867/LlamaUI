@@ -61,10 +61,7 @@
 <div class="flex h-full flex-col" style="background:var(--bg-base);">
 
   <!-- 顶部栏 -->
-  <div
-    class="flex shrink-0 items-center border-b px-4 py-3"
-    style="border-color:var(--border-subtle); background:var(--bg-surface);"
-  >
+  <div class="page-header flex shrink-0 items-center border-b px-4 py-3">
     <div>
       <h2 class="text-sm font-semibold" style="color:var(--text-base);">设置</h2>
       <p class="text-xs" style="color:var(--text-muted);">配置 llama.cpp 路径与模型目录</p>
@@ -74,37 +71,20 @@
   <div class="flex-1 overflow-y-auto px-4 py-4 space-y-3">
 
     <!-- llama.cpp 路径 -->
-    <section
-      class="rounded-lg border p-4"
-      style="background:var(--bg-surface); border-color:var(--border-subtle);"
-    >
-      <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted);">
-        llama.cpp 路径
-      </h3>
+    <section class="card rounded-lg border p-4">
+      <h3 class="section-title mb-3 text-xs font-semibold uppercase tracking-wide">llama.cpp 路径</h3>
       <div class="flex gap-2">
         <input
           type="text"
           bind:value={llamaPath}
           placeholder="llama.cpp 安装目录路径..."
           onblur={saveLlamaPath}
-          class="flex-1 rounded-md border px-2.5 py-1.5 text-xs"
-          style="background:var(--bg-elevated); border-color:var(--border-subtle); color:var(--text-base);"
+          class="field-input flex-1 rounded-md border px-2.5 py-1.5 text-xs"
         />
-        <button
-          onclick={selectLlamaDir}
-          class="rounded-md border px-3 py-1.5 text-xs transition-colors"
-          style="border-color:var(--border); color:var(--text-secondary); background:var(--bg-elevated);"
-          onmouseenter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-hover)")}
-          onmouseleave={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)")}
-        >浏览</button>
-        <button
-          onclick={handleDetect}
-          disabled={detecting}
-          class="rounded-md border px-3 py-1.5 text-xs transition-colors"
-          style="border-color:var(--border); color:var(--text-secondary); background:var(--bg-elevated);"
-          onmouseenter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-hover)")}
-          onmouseleave={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)")}
-        >{detecting ? "检测中..." : "自动检测"}</button>
+        <button class="btn-ghost rounded-md border px-3 py-1.5 text-xs" onclick={selectLlamaDir}>浏览</button>
+        <button class="btn-ghost rounded-md border px-3 py-1.5 text-xs" onclick={handleDetect} disabled={detecting}>
+          {detecting ? "检测中..." : "自动检测"}
+        </button>
       </div>
 
       {#if validationMsg}
@@ -115,13 +95,7 @@
         <div class="mt-3 space-y-1">
           <p class="text-[11px] mb-1.5" style="color:var(--text-muted);">检测到 {detectedInstalls.length} 个安装：</p>
           {#each detectedInstalls as install}
-            <button
-              onclick={() => useDetected(install)}
-              class="flex w-full items-center justify-between rounded-md border px-2.5 py-2 text-left text-xs transition-colors"
-              style="background:var(--bg-elevated); border-color:var(--border-subtle); color:var(--text-base);"
-              onmouseenter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-hover)")}
-              onmouseleave={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)")}
-            >
+            <button onclick={() => useDetected(install)} class="install-btn flex w-full items-center justify-between rounded-md border px-2.5 py-2 text-left text-xs">
               <span class="truncate">{install.path}</span>
               <span class="ml-3 shrink-0 text-[11px]" style="color:var(--text-muted);">
                 {[install.has_server ? "server" : "", install.has_cli ? "cli" : ""].filter(Boolean).join(" + ")}
@@ -133,19 +107,12 @@
     </section>
 
     <!-- 模型目录 -->
-    <section
-      class="rounded-lg border p-4"
-      style="background:var(--bg-surface); border-color:var(--border-subtle);"
-    >
+    <section class="card rounded-lg border p-4">
       <div class="mb-3 flex items-center justify-between">
-        <h3 class="text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted);">
-          模型目录
-        </h3>
-        <button
-          onclick={addModelDir}
-          class="rounded-md px-3 py-1 text-xs font-medium text-white transition-opacity hover:opacity-85"
-          style="background:var(--accent);"
-        >+ 添加目录</button>
+        <h3 class="section-title text-xs font-semibold uppercase tracking-wide">模型目录</h3>
+        <button onclick={addModelDir} class="btn-primary rounded-md px-3 py-1 text-xs font-medium text-white">
+          + 添加目录
+        </button>
       </div>
 
       {#if configStore.config.model_dirs.length === 0}
@@ -153,33 +120,56 @@
       {:else}
         <div class="space-y-1">
           {#each configStore.config.model_dirs as dir}
-            <div
-              class="flex items-center justify-between rounded-md border px-2.5 py-2"
-              style="background:var(--bg-elevated); border-color:var(--border-subtle);"
-            >
+            <div class="dir-item flex items-center justify-between rounded-md border px-2.5 py-2">
               <span class="truncate text-xs" style="color:var(--text-base);">{dir}</span>
-              <button
-                onclick={() => removeModelDir(dir)}
-                class="ml-3 shrink-0 text-xs transition-colors"
-                style="color:var(--text-muted);"
-                onmouseenter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--danger)")}
-                onmouseleave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--text-muted)")}
-              >移除</button>
+              <button onclick={() => removeModelDir(dir)} class="remove-btn ml-3 shrink-0 text-xs">移除</button>
             </div>
           {/each}
         </div>
       {/if}
     </section>
 
-    <!-- 默认参数（占位） -->
-    <section
-      class="rounded-lg border p-4"
-      style="background:var(--bg-surface); border-color:var(--border-subtle);"
-    >
-      <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted);">
-        默认启动参数
-      </h3>
+    <!-- 默认参数 -->
+    <section class="card rounded-lg border p-4">
+      <h3 class="section-title mb-2 text-xs font-semibold uppercase tracking-wide">默认启动参数</h3>
       <p class="text-xs" style="color:var(--text-muted);">默认参数在启动器中自动填充，可在启动前覆盖</p>
     </section>
   </div>
 </div>
+
+<style>
+  .page-header { border-color: var(--border-subtle); background: var(--bg-surface); }
+  .card { background: var(--bg-surface); border-color: var(--border-subtle); }
+  .section-title { color: var(--text-muted); }
+
+  .field-input {
+    background: var(--bg-elevated);
+    border-color: var(--border-subtle);
+    color: var(--text-base);
+  }
+  .field-input:focus { border-color: var(--accent); outline: none; }
+
+  .btn-ghost {
+    border-color: var(--border);
+    color: var(--text-secondary);
+    background: var(--bg-elevated);
+    transition: background 0.15s;
+  }
+  .btn-ghost:hover { background: var(--bg-hover); }
+
+  .btn-primary { background: var(--accent); transition: opacity 0.15s; }
+  .btn-primary:hover { opacity: 0.85; }
+
+  .install-btn {
+    background: var(--bg-elevated);
+    border-color: var(--border-subtle);
+    color: var(--text-base);
+    transition: background 0.15s;
+  }
+  .install-btn:hover { background: var(--bg-hover); }
+
+  .dir-item { background: var(--bg-elevated); border-color: var(--border-subtle); }
+
+  .remove-btn { color: var(--text-muted); transition: color 0.15s; }
+  .remove-btn:hover { color: var(--danger); }
+</style>
