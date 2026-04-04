@@ -2,7 +2,7 @@
   import { getConfigStore } from "../stores/config.svelte";
   import { detectLlama, validateLlamaPath } from "../services/tauri-bridge";
   import { open } from "@tauri-apps/plugin-dialog";
-  import type { AppConfig, LlamaInstall } from "../types";
+  import type { LlamaInstall } from "../types";
 
   const configStore = getConfigStore();
 
@@ -10,13 +10,21 @@
   let detectedInstalls = $state<LlamaInstall[]>([]);
   let detecting = $state(false);
   let validationMsg = $state("");
+  let copied = $state<string | null>(null);
 
   $effect(() => {
     if (configStore.loaded) llamaPath = configStore.config.llama_dir ?? "";
   });
 
+  // 从默认参数派生服务地址
+  const serverHost = $derived(configStore.config.default_params.host ?? "127.0.0.1");
+  const serverPort = $derived(configStore.config.default_params.port ?? 8080);
+  const serverApiKey = $derived(configStore.config.default_params.api_key ?? "");
+  const baseUrl = $derived(`http://${serverHost}:${serverPort}`);
+
   async function handleDetect() {
     detecting = true;
+    detectedInstalls = [];
     try { detectedInstalls = await detectLlama(); }
     catch (e) { console.error(e); }
     finally { detecting = false; }
@@ -56,120 +64,368 @@
       model_dirs: configStore.config.model_dirs.filter((d) => d !== dir),
     });
   }
+
+  function copyText(text: string, key: string) {
+    navigator.clipboard.writeText(text).then(() => {
+      copied = key;
+      setTimeout(() => { copied = null; }, 1500);
+    });
+  }
+
+  // Codex CLI 环境变量
+  const codexEnv = $derived(
+    `export OPENAI_BASE_URL=${baseUrl}/v1\nexport OPENAI_API_KEY=${serverApiKey || "sk-no-key-required"}`
+  );
+  // Droid CLI 环境变量
+  const droidEnv = $derived(
+    `export ANTHROPIC_BASE_URL=${baseUrl}/anthropic\nexport ANTHROPIC_API_KEY=${serverApiKey || "sk-no-key-required"}`
+  );
 </script>
 
-<div class="flex h-full flex-col" style="background:var(--bg-base);">
+<div class="root">
 
   <!-- 顶部栏 -->
-  <div class="page-header flex shrink-0 items-center border-b px-4 py-3">
+  <div class="topbar">
     <div>
-      <h2 class="text-sm font-semibold" style="color:var(--text-base);">设置</h2>
-      <p class="text-xs" style="color:var(--text-muted);">配置 llama.cpp 路径与模型目录</p>
+      <div class="topbar-title">设置</div>
+      <div class="topbar-sub">配置 llama.cpp 路径、模型目录与客户端接入</div>
     </div>
   </div>
 
-  <div class="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+  <div class="body">
 
-    <!-- llama.cpp 路径 -->
-    <section class="card rounded-lg border p-4">
-      <h3 class="section-title mb-3 text-xs font-semibold uppercase tracking-wide">llama.cpp 路径</h3>
-      <div class="flex gap-2">
+    <!-- ─ llama.cpp 路径 ─ -->
+    <div class="section">
+      <div class="section-title">llama.cpp 路径</div>
+      <div class="row-input">
         <input
+          class="input flex-1"
           type="text"
           bind:value={llamaPath}
           placeholder="llama.cpp 安装目录路径..."
           onblur={saveLlamaPath}
-          class="field-input flex-1 rounded-md border px-2.5 py-1.5 text-xs"
         />
-        <button class="btn-ghost rounded-md border px-3 py-1.5 text-xs" onclick={selectLlamaDir}>浏览</button>
-        <button class="btn-ghost rounded-md border px-3 py-1.5 text-xs" onclick={handleDetect} disabled={detecting}>
+        <button class="btn-ghost" onclick={selectLlamaDir}>浏览</button>
+        <button class="btn-ghost" onclick={handleDetect} disabled={detecting}>
           {detecting ? "检测中..." : "自动检测"}
         </button>
       </div>
 
       {#if validationMsg}
-        <p class="mt-2 text-xs" style="color:var(--danger);">{validationMsg}</p>
+        <div class="error-bar">{validationMsg}</div>
       {/if}
 
       {#if detectedInstalls.length > 0}
-        <div class="mt-3 space-y-1">
-          <p class="text-[11px] mb-1.5" style="color:var(--text-muted);">检测到 {detectedInstalls.length} 个安装：</p>
+        <div class="detect-list">
+          <div class="detect-label">检测到 {detectedInstalls.length} 个安装</div>
           {#each detectedInstalls as install}
-            <button onclick={() => useDetected(install)} class="install-btn flex w-full items-center justify-between rounded-md border px-2.5 py-2 text-left text-xs">
-              <span class="truncate">{install.path}</span>
-              <span class="ml-3 shrink-0 text-[11px]" style="color:var(--text-muted);">
+            <button onclick={() => useDetected(install)} class="detect-item">
+              <span class="detect-path">{install.path}</span>
+              <span class="detect-caps">
                 {[install.has_server ? "server" : "", install.has_cli ? "cli" : ""].filter(Boolean).join(" + ")}
               </span>
             </button>
           {/each}
         </div>
       {/if}
-    </section>
+    </div>
 
-    <!-- 模型目录 -->
-    <section class="card rounded-lg border p-4">
-      <div class="mb-3 flex items-center justify-between">
-        <h3 class="section-title text-xs font-semibold uppercase tracking-wide">模型目录</h3>
-        <button onclick={addModelDir} class="btn-primary rounded-md px-3 py-1 text-xs font-medium text-white">
-          + 添加目录
-        </button>
+    <!-- ─ 模型目录 ─ -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">模型目录</span>
+        <button class="btn-primary" onclick={addModelDir}>+ 添加</button>
       </div>
 
       {#if configStore.config.model_dirs.length === 0}
-        <p class="text-xs" style="color:var(--text-muted);">未配置模型目录，请添加包含 .gguf 文件的目录</p>
+        <div class="empty-hint">未配置模型目录，请添加包含 .gguf 文件的文件夹</div>
       {:else}
-        <div class="space-y-1">
+        <div class="dir-list">
           {#each configStore.config.model_dirs as dir}
-            <div class="dir-item flex items-center justify-between rounded-md border px-2.5 py-2">
-              <span class="truncate text-xs" style="color:var(--text-base);">{dir}</span>
-              <button onclick={() => removeModelDir(dir)} class="remove-btn ml-3 shrink-0 text-xs">移除</button>
+            <div class="dir-item">
+              <span class="dir-path">{dir}</span>
+              <button class="remove-btn" onclick={() => removeModelDir(dir)}>移除</button>
             </div>
           {/each}
         </div>
       {/if}
-    </section>
+    </div>
 
-    <!-- 默认参数 -->
-    <section class="card rounded-lg border p-4">
-      <h3 class="section-title mb-2 text-xs font-semibold uppercase tracking-wide">默认启动参数</h3>
-      <p class="text-xs" style="color:var(--text-muted);">默认参数在启动器中自动填充，可在启动前覆盖</p>
-    </section>
+    <!-- ─ 客户端接入 ─ -->
+    <div class="section">
+      <div class="section-title">客户端接入</div>
+      <div class="access-note">
+        基于启动器中配置的监听地址 <code>{baseUrl}</code>。如需外部访问请将监听地址设为 <code>0.0.0.0</code>。
+      </div>
+
+      <!-- Codex CLI -->
+      <div class="client-card">
+        <div class="client-header">
+          <div class="client-name">Codex CLI</div>
+          <div class="client-badge badge-openai">OpenAI 兼容</div>
+          <button class="copy-btn" onclick={() => copyText(codexEnv, "codex")}>
+            {copied === "codex" ? "已复制 ✓" : "复制"}
+          </button>
+        </div>
+        <pre class="code-block">{codexEnv}</pre>
+        <div class="client-apis">
+          接口：<code>/v1/chat/completions</code> · <code>/v1/models</code> · <code>/v1/responses</code>
+        </div>
+      </div>
+
+      <!-- Droid CLI -->
+      <div class="client-card">
+        <div class="client-header">
+          <div class="client-name">Droid CLI</div>
+          <div class="client-badge badge-anthropic">Anthropic 兼容</div>
+          <button class="copy-btn" onclick={() => copyText(droidEnv, "droid")}>
+            {copied === "droid" ? "已复制 ✓" : "复制"}
+          </button>
+        </div>
+        <pre class="code-block">{droidEnv}</pre>
+        <div class="client-apis">
+          接口：<code>/anthropic/v1/messages</code>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
 <style>
-  .page-header { border-color: var(--border-subtle); background: var(--bg-surface); }
-  .card { background: var(--bg-surface); border-color: var(--border-subtle); }
-  .section-title { color: var(--text-muted); }
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-base);
+  overflow: hidden;
+}
 
-  .field-input {
-    background: var(--bg-elevated);
-    border-color: var(--border-subtle);
-    color: var(--text-base);
-  }
-  .field-input:focus { border-color: var(--accent); outline: none; }
+/* ─ Topbar ─ */
+.topbar {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.topbar-title { font-size: 13px; font-weight: 600; color: var(--text-base); line-height: 1.2; }
+.topbar-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
 
-  .btn-ghost {
-    border-color: var(--border);
-    color: var(--text-secondary);
-    background: var(--bg-elevated);
-    transition: background 0.15s;
-  }
-  .btn-ghost:hover { background: var(--bg-hover); }
+/* ─ Body ─ */
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 
-  .btn-primary { background: var(--accent); transition: opacity 0.15s; }
-  .btn-primary:hover { opacity: 0.85; }
+/* ─ Section ─ */
+.section {
+  padding: 8px 0 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.section:last-child { border-bottom: none; }
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  display: block;
+}
+.section-header .section-title { margin-bottom: 0; }
 
-  .install-btn {
-    background: var(--bg-elevated);
-    border-color: var(--border-subtle);
-    color: var(--text-base);
-    transition: background 0.15s;
-  }
-  .install-btn:hover { background: var(--bg-hover); }
+/* ─ Input row ─ */
+.row-input { display: flex; gap: 6px; align-items: center; }
+.input {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-base);
+  outline: none;
+  transition: border-color 0.12s;
+  min-width: 0;
+}
+.input:focus { border-color: var(--accent); }
+.flex-1 { flex: 1; }
 
-  .dir-item { background: var(--bg-elevated); border-color: var(--border-subtle); }
+/* ─ Buttons ─ */
+.btn-ghost {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.12s;
+}
+.btn-ghost:hover { background: var(--bg-hover); }
+.btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .remove-btn { color: var(--text-muted); transition: color 0.15s; }
-  .remove-btn:hover { color: var(--danger); }
+.btn-primary {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+.btn-primary:hover { opacity: 0.85; }
+
+/* ─ Error ─ */
+.error-bar {
+  margin-top: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--danger);
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: 4px;
+}
+
+/* ─ Detected installs ─ */
+.detect-list { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+.detect-label { font-size: 10px; color: var(--text-muted); margin-bottom: 3px; }
+.detect-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s;
+  text-align: left;
+}
+.detect-item:hover { background: var(--bg-hover); }
+.detect-path { font-size: 11px; color: var(--text-base); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detect-caps { font-size: 10px; color: var(--text-muted); flex-shrink: 0; margin-left: 8px; }
+
+/* ─ Dirs ─ */
+.empty-hint { font-size: 11px; color: var(--text-muted); }
+.dir-list { display: flex; flex-direction: column; gap: 3px; }
+.dir-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+.dir-path { font-size: 11px; color: var(--text-base); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remove-btn {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 8px;
+  transition: color 0.12s;
+}
+.remove-btn:hover { color: var(--danger); }
+
+/* ─ Client access ─ */
+.access-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.access-note code {
+  font-family: monospace;
+  font-size: 10px;
+  background: var(--bg-overlay);
+  padding: 1px 4px;
+  border-radius: 2px;
+  color: var(--text-secondary);
+}
+
+.client-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.client-card:last-child { margin-bottom: 0; }
+.client-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.client-name { font-size: 12px; font-weight: 600; color: var(--text-base); }
+.client-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+.badge-openai { background: rgba(16,163,127,0.12); color: #10a37f; }
+.badge-anthropic { background: rgba(205,154,109,0.15); color: #cd9a6d; }
+
+.copy-btn {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.copy-btn:hover { background: var(--bg-hover); }
+
+.code-block {
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-base);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.client-apis {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.client-apis code {
+  font-family: monospace;
+  background: var(--bg-overlay);
+  padding: 1px 4px;
+  border-radius: 2px;
+  color: var(--text-secondary);
+}
 </style>
