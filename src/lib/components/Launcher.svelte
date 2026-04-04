@@ -23,9 +23,11 @@
   let ubatchSize = $state(512);
   let parallel = $state(1);
   let cacheTypeK = $state("f16");
+  let cacheTypeV = $state("f16");
   let seed = $state(-1);
   let mlock = $state(false);
   let noMmap = $state(false);
+  let noKvOffload = $state(false);
   let apiKey = $state("");
   let corsAllowOrigins = $state("*");
   let systemPrompt = $state("");
@@ -77,6 +79,8 @@
       if (p.ubatch_size  != null) ubatchSize  = p.ubatch_size;
       if (p.parallel     != null) parallel    = p.parallel;
       if (p.cache_type_k != null) cacheTypeK  = p.cache_type_k;
+      if (p.cache_type_v != null) cacheTypeV  = p.cache_type_v;
+      if (p.no_kv_offload != null) noKvOffload = p.no_kv_offload;
       if (p.seed         != null) seed        = p.seed;
       if (p.mlock        != null) mlock       = p.mlock;
       if (p.no_mmap      != null) noMmap      = p.no_mmap;
@@ -106,6 +110,8 @@
         ubatch_size: isServer ? ubatchSize : undefined,
         parallel:    isServer ? parallel : undefined,
         cache_type_k: isServer && cacheTypeK !== "f16" ? cacheTypeK : undefined,
+        cache_type_v: isServer && cacheTypeV !== "f16" ? cacheTypeV : undefined,
+        no_kv_offload: isServer && noKvOffload ? true : undefined,
         seed:        seed !== -1 ? seed : undefined,
         mlock:       mlock || undefined,
         no_mmap:     noMmap || undefined,
@@ -300,11 +306,19 @@
           <input class="input" type="number" bind:value={parallel} min="1" max="64" />
         </label>
         <label class="field">
-          <span class="field-label">KV 缓存类型 <span class="hint">--cache-type-k，量化可省显存</span></span>
+          <span class="field-label">KV Cache K 类型 <span class="hint">--cache-type-k，量化 K 缓存省显存</span></span>
           <select class="input" bind:value={cacheTypeK}>
             <option value="f16">f16 — 默认精度</option>
             <option value="q8_0">q8_0 — 8位量化</option>
-            <option value="q4_0">q4_0 — 4位量化（省显存）</option>
+            <option value="q4_0">q4_0 — 4位量化（最省显存）</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">KV Cache V 类型 <span class="hint">--cache-type-v，量化 V 缓存（需开 Flash Attn）</span></span>
+          <select class="input" bind:value={cacheTypeV}>
+            <option value="f16">f16 — 默认精度</option>
+            <option value="q8_0">q8_0 — 8位量化</option>
+            <option value="q4_0">q4_0 — 4位量化（最省显存）</option>
           </select>
         </label>
         <label class="field">
@@ -313,6 +327,10 @@
         </label>
       </div>
       <div class="switch-row">
+        <label class="switch-item">
+          <input type="checkbox" bind:checked={noKvOffload} />
+          <span>KV 缓存留显存 <span class="hint">-nkvo，禁止 KV 卸载到内存，加速长上下文处理</span></span>
+        </label>
         <label class="switch-item">
           <input type="checkbox" bind:checked={mlock} />
           <span>锁定内存 <span class="hint">--mlock，防止模型被换出到磁盘</span></span>

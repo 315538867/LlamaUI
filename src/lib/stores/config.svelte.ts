@@ -22,6 +22,8 @@ let config = $state<AppConfig>({
     ubatch_size: null,
     parallel: null,
     cache_type_k: null,
+    cache_type_v: null,
+    no_kv_offload: null,
     seed: null,
     mlock: null,
     no_mmap: null,

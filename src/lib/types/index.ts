@@ -25,6 +25,8 @@ export interface LaunchConfig {
   ubatch_size?: number;
   parallel?: number;
   cache_type_k?: string;
+  cache_type_v?: string;
+  no_kv_offload?: boolean;
   seed?: number;
   mlock?: boolean;
   no_mmap?: boolean;
@@ -66,6 +68,8 @@ export interface LaunchParams {
   ubatch_size: number | null;
   parallel: number | null;
   cache_type_k: string | null;
+  cache_type_v: string | null;
+  no_kv_offload: boolean | null;
   seed: number | null;
   mlock: boolean | null;
   no_mmap: boolean | null;

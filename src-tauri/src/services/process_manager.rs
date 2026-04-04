@@ -151,12 +151,22 @@ impl ProcessManager {
                 args.push("--parallel".into());
                 args.push(np.to_string());
             }
-            // KV cache quantization type
+            // KV cache quantization type (K and V)
             if let Some(ref kt) = config.cache_type_k {
                 if !kt.is_empty() {
                     args.push("--cache-type-k".into());
                     args.push(kt.clone());
                 }
+            }
+            if let Some(ref vt) = config.cache_type_v {
+                if !vt.is_empty() {
+                    args.push("--cache-type-v".into());
+                    args.push(vt.clone());
+                }
+            }
+            // Keep KV cache entirely in VRAM (no CPU offload)
+            if config.no_kv_offload.unwrap_or(false) {
+                args.push("-nkvo".into());
             }
             // Seed
             if let Some(seed) = config.seed {
