@@ -7,6 +7,14 @@
 
   let searchQuery = $state("");
   let viewMode = $state<"list" | "grid">("list");
+  let copiedPath = $state<string | null>(null);
+
+  function copyName(model: { name: string; path: string }) {
+    navigator.clipboard.writeText(model.name).then(() => {
+      copiedPath = model.path;
+      setTimeout(() => { copiedPath = null; }, 1500);
+    });
+  }
 
   const filteredModels = $derived(
     modelStore.models.filter((m) =>
@@ -86,7 +94,10 @@
         {#each filteredModels as model}
           <div class="list-row">
             <div class="row-info">
-              <div class="row-name">{model.name}</div>
+              <button class="row-name-btn" onclick={() => copyName(model)} title="点击复制模型名">
+                <span class="row-name">{model.name}</span>
+                <span class="copy-hint">{copiedPath === model.path ? "已复制 ✓" : "复制"}</span>
+              </button>
               <div class="row-path">{model.path}</div>
             </div>
             <div class="row-meta">
@@ -104,7 +115,10 @@
       <div class="grid">
         {#each filteredModels as model}
           <div class="grid-card">
-            <div class="card-name">{model.name}</div>
+            <button class="row-name-btn" onclick={() => copyName(model)} title="点击复制模型名">
+              <span class="card-name">{model.name}</span>
+              <span class="copy-hint">{copiedPath === model.path ? "✓" : "复制"}</span>
+            </button>
             <div class="card-footer">
               <span class="row-size">{model.size_display}</span>
               {#if model.quantization}
@@ -240,6 +254,30 @@
   text-align: center;
 }
 
+/* ─ Copy button ─ */
+.row-name-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  width: 100%;
+}
+.copy-hint {
+  font-size: 10px;
+  color: var(--accent);
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 0.12s;
+  white-space: nowrap;
+}
+.list-row:hover .copy-hint,
+.grid-card:hover .copy-hint { opacity: 1; }
+
 /* ─ List view ─ */
 .list { display: flex; flex-direction: column; gap: 2px; }
 .list-row {
@@ -261,6 +299,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 .row-path {
   font-size: 10px;
@@ -306,6 +346,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 .card-footer { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 
