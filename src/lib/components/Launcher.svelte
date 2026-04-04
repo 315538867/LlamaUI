@@ -26,6 +26,8 @@
   let seed = $state(-1);
   let mlock = $state(false);
   let noMmap = $state(false);
+  let apiKey = $state("");
+  let corsAllowOrigins = $state("*");
   let extraArgs = $state("");
   let launching = $state(false);
   let launchError = $state<string | null>(null);
@@ -77,6 +79,8 @@
       if (p.seed         != null) seed        = p.seed;
       if (p.mlock        != null) mlock       = p.mlock;
       if (p.no_mmap      != null) noMmap      = p.no_mmap;
+      if (p.api_key      != null) apiKey      = p.api_key;
+      if (p.cors_allow_origins != null) corsAllowOrigins = p.cors_allow_origins;
     }
   });
 
@@ -103,6 +107,8 @@
         seed:        seed !== -1 ? seed : undefined,
         mlock:       mlock || undefined,
         no_mmap:     noMmap || undefined,
+        api_key:     isServer && apiKey ? apiKey : undefined,
+        cors_allow_origins: isServer && corsAllowOrigins ? corsAllowOrigins : undefined,
         extra_args:  extraArgs || undefined,
       };
       await startLlama(config);
@@ -227,6 +233,16 @@
         <label class="field">
           <span class="field-label">端口 <span class="hint">--port，默认 8080</span></span>
           <input class="input" type="number" bind:value={port} min="1024" max="65535" />
+        </label>
+      </div>
+      <div class="grid-2" style="margin-top:8px;">
+        <label class="field">
+          <span class="field-label">API Key <span class="hint">--api-key，留空则无需鉴权</span></span>
+          <input class="input font-mono" type="text" bind:value={apiKey} placeholder="sk-..." autocomplete="off" />
+        </label>
+        <label class="field">
+          <span class="field-label">CORS 允许来源 <span class="hint">--cors-allow-origins，* = 所有来源</span></span>
+          <input class="input font-mono" type="text" bind:value={corsAllowOrigins} placeholder="* 或 http://localhost:3000" />
         </label>
       </div>
       <div class="switch-row">

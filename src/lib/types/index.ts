@@ -28,6 +28,8 @@ export interface LaunchConfig {
   seed?: number;
   mlock?: boolean;
   no_mmap?: boolean;
+  api_key?: string;
+  cors_allow_origins?: string;
   prompt?: string;
   predict?: number;
   extra_args?: string;
@@ -66,6 +68,8 @@ export interface LaunchParams {
   seed: number | null;
   mlock: boolean | null;
   no_mmap: boolean | null;
+  api_key: string | null;
+  cors_allow_origins: string | null;
   extra_args: string | null;
 }
 

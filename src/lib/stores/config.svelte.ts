@@ -25,6 +25,8 @@ let config = $state<AppConfig>({
     seed: null,
     mlock: null,
     no_mmap: null,
+    api_key: null,
+    cors_allow_origins: null,
     extra_args: null,
   },
   last_preset: null,

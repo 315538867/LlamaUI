@@ -169,6 +169,20 @@ impl ProcessManager {
             if config.no_mmap.unwrap_or(false) {
                 args.push("--no-mmap".into());
             }
+            // API key
+            if let Some(ref key) = config.api_key {
+                if !key.is_empty() {
+                    args.push("--api-key".into());
+                    args.push(key.clone());
+                }
+            }
+            // CORS allowed origins
+            if let Some(ref origins) = config.cors_allow_origins {
+                if !origins.is_empty() {
+                    args.push("--cors-allow-origins".into());
+                    args.push(origins.clone());
+                }
+            }
         }
 
         // CLI-specific args
