@@ -15,7 +15,7 @@
   let gpuLayers = $state(99);
   let ctxSize = $state(4096);
   let threads = $state(0);
-  let port = $state(8080);
+  let port = $state(8000);
   let host = $state("127.0.0.1");
   let flashAttn = $state(true);
   let contBatching = $state(true);
@@ -37,8 +37,8 @@
 
   // RTX 5080 16GB 预设（按模型档位）
   const GPU_PRESETS = [
-    { label: "9B Q4",  gpu_layers: 99, ctx_size: 32768, flash_attn: true, match: /9b/i },
-    { label: "9B Q8",  gpu_layers: 99, ctx_size: 16384, flash_attn: true, match: /9b/i },
+    { label: "9B Q4",  gpu_layers: 99, ctx_size: 90000, flash_attn: true, match: /9b/i },
+    { label: "9B Q8",  gpu_layers: 99, ctx_size: 90000, flash_attn: true, match: /9b/i },
     { label: "14B Q4", gpu_layers: 99, ctx_size: 16384, flash_attn: true, match: /14b/i },
     { label: "14B Q8", gpu_layers: 70, ctx_size: 8192,  flash_attn: true, match: /14b/i },
     { label: "27B Q4", gpu_layers: 30, ctx_size: 8192,  flash_attn: true, match: /27b/i },

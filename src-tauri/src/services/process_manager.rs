@@ -4,6 +4,8 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 use super::config_store::LaunchConfig;
 use super::llama_detector;
@@ -220,12 +222,17 @@ impl ProcessManager {
         }
 
         // Spawn process (kill_on_drop ensures cleanup when Child is dropped)
-        let mut child = Command::new(&bin_path)
-            .args(&args)
+        let mut cmd = Command::new(&bin_path);
+        cmd.args(&args)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
+            .kill_on_drop(true);
+
+        // 防止在 Windows 上弹出控制台窗口（rpc-server.exe 等子进程同样生效）
+        #[cfg(windows)]
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+        let mut child = cmd.spawn()
             .map_err(|e| format!("启动失败: {}", e))?;
 
         let pid = child.id();

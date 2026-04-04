@@ -50,7 +50,7 @@ impl Default for LaunchParams {
             gpu_layers: Some(99),
             ctx_size: Some(4096),
             threads: None,
-            port: Some(8080),
+            port: Some(8000),
             host: Some("127.0.0.1".into()),
             flash_attn: Some(true),
             cont_batching: Some(true),

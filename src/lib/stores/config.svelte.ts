@@ -14,7 +14,7 @@ let config = $state<AppConfig>({
     gpu_layers: 99,
     ctx_size: 4096,
     threads: null,
-    port: 8080,
+    port: 8000,
     host: "127.0.0.1",
     flash_attn: true,
     cont_batching: true,
