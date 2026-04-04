@@ -56,6 +56,16 @@
   </div>
 
   <div class="flex items-center gap-3">
+    {#if process.tokensPerSec != null}
+      <span class="tps-badge">
+        ⚡ {process.tokensPerSec.toFixed(1)} t/s
+      </span>
+    {/if}
+    {#if process.promptTps != null && process.tokensPerSec != null}
+      <span class="text-[11px]" style="color:var(--text-muted);" title="Prefill 速度">
+        ↑ {process.promptTps.toFixed(0)} t/s
+      </span>
+    {/if}
     {#if process.info.port}
       <span class="text-[11px]" style="color:var(--text-muted);">:{process.info.port}</span>
     {/if}
@@ -67,3 +77,12 @@
     {/if}
   </div>
 </footer>
+
+<style>
+.tps-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--success);
+  letter-spacing: 0.01em;
+}
+</style>
