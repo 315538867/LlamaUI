@@ -27,6 +27,7 @@ let config = $state<AppConfig>({
     no_mmap: null,
     api_key: null,
     cors_allow_origins: null,
+    system_prompt: null,
     extra_args: null,
   },
   last_preset: null,

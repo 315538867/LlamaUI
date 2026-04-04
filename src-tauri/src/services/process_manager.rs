@@ -183,6 +183,16 @@ impl ProcessManager {
                     args.push(origins.clone());
                 }
             }
+            // System prompt — write to temp file, pass via --system-prompt-file
+            if let Some(ref sp) = config.system_prompt {
+                if !sp.is_empty() {
+                    let tmp = std::env::temp_dir().join("llama_system_prompt.txt");
+                    std::fs::write(&tmp, sp)
+                        .map_err(|e| format!("写入系统提示词临时文件失败: {}", e))?;
+                    args.push("--system-prompt-file".into());
+                    args.push(tmp.to_string_lossy().into_owned());
+                }
+            }
         }
 
         // CLI-specific args

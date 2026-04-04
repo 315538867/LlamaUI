@@ -28,6 +28,7 @@
   let noMmap = $state(false);
   let apiKey = $state("");
   let corsAllowOrigins = $state("*");
+  let systemPrompt = $state("");
   let extraArgs = $state("");
   let launching = $state(false);
   let launchError = $state<string | null>(null);
@@ -81,6 +82,7 @@
       if (p.no_mmap      != null) noMmap      = p.no_mmap;
       if (p.api_key      != null) apiKey      = p.api_key;
       if (p.cors_allow_origins != null) corsAllowOrigins = p.cors_allow_origins;
+      if (p.system_prompt != null) systemPrompt = p.system_prompt;
     }
   });
 
@@ -109,6 +111,7 @@
         no_mmap:     noMmap || undefined,
         api_key:     isServer && apiKey ? apiKey : undefined,
         cors_allow_origins: isServer && corsAllowOrigins ? corsAllowOrigins : undefined,
+        system_prompt: isServer && systemPrompt ? systemPrompt : undefined,
         extra_args:  extraArgs || undefined,
       };
       await startLlama(config);
@@ -254,6 +257,23 @@
           <input type="checkbox" bind:checked={contBatching} />
           <span>连续批处理 <span class="hint">--cont-batching，提升多并发吞吐量</span></span>
         </label>
+      </div>
+    </div>
+    {/if}
+
+    <!-- 系统提示词 -->
+    {#if mode === "server"}
+    <div class="section">
+      <div class="section-title">系统提示词</div>
+      <textarea
+        class="input sys-prompt"
+        bind:value={systemPrompt}
+        placeholder="留空则不设置。例如：You are a helpful assistant. Reply in Chinese."
+        rows="4"
+        spellcheck="false"
+      ></textarea>
+      <div class="sys-prompt-hint">
+        通过 <code>--system-prompt-file</code> 传入，对所有对话生效。Codex/Droid CLI 发起的请求中若也带了 system 消息，两者会合并。
       </div>
     </div>
     {/if}
@@ -547,6 +567,29 @@
   height: 13px;
   accent-color: var(--accent);
   flex-shrink: 0;
+}
+
+/* ─ System prompt ─ */
+.input.sys-prompt {
+  height: auto;
+  padding: 6px 8px;
+  resize: vertical;
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.sys-prompt-hint {
+  margin-top: 5px;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.sys-prompt-hint code {
+  font-family: monospace;
+  background: var(--bg-overlay);
+  border-radius: 2px;
+  padding: 0 3px;
+  color: var(--text-secondary);
 }
 
 /* ─ Log area ─ */

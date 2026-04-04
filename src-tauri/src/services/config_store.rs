@@ -40,6 +40,7 @@ pub struct LaunchParams {
     pub no_mmap: Option<bool>,
     pub api_key: Option<String>,
     pub cors_allow_origins: Option<String>,
+    pub system_prompt: Option<String>,
     pub extra_args: Option<String>,
 }
 
@@ -62,6 +63,7 @@ impl Default for LaunchParams {
             no_mmap: None,
             api_key: None,
             cors_allow_origins: None,
+            system_prompt: None,
             extra_args: None,
         }
     }
@@ -87,6 +89,7 @@ pub struct LaunchConfig {
     pub no_mmap: Option<bool>,
     pub api_key: Option<String>,
     pub cors_allow_origins: Option<String>,
+    pub system_prompt: Option<String>,
     pub prompt: Option<String>,
     pub predict: Option<u32>,
     pub extra_args: Option<String>,

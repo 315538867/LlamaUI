@@ -30,6 +30,7 @@ export interface LaunchConfig {
   no_mmap?: boolean;
   api_key?: string;
   cors_allow_origins?: string;
+  system_prompt?: string;
   prompt?: string;
   predict?: number;
   extra_args?: string;
@@ -70,6 +71,7 @@ export interface LaunchParams {
   no_mmap: boolean | null;
   api_key: string | null;
   cors_allow_origins: string | null;
+  system_prompt: string | null;
   extra_args: string | null;
 }
 
