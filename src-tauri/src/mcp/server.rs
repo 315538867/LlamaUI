@@ -235,7 +235,15 @@ fn handle_tool_call(
                 .ok_or("缺少 model 参数")?;
 
             let config = config_store.load_config();
-            let llama_dir = config.llama_dir.ok_or("未配置 llama.cpp 路径")?;
+            let (llama_dir, auto_detected) = match config.llama_dir {
+                Some(dir) => (dir, false),
+                None => {
+                    let installs = crate::services::llama_detector::detect_installations();
+                    let found = installs.into_iter().find(|i| i.has_server)
+                        .ok_or("未配置 llama.cpp 路径，且自动检测未找到 llama-server")?;
+                    (found.path, true)
+                }
+            };
             let gpu_layers = arguments.get("gpu_layers").and_then(|v| v.as_i64()).unwrap_or(99);
             let ctx_size = arguments.get("ctx_size").and_then(|v| v.as_i64()).unwrap_or(4096);
 
@@ -306,7 +314,9 @@ fn handle_tool_call(
                 "pid": pid,
                 "model": model_path,
                 "port": port,
-                "url": format!("http://127.0.0.1:{}", port)
+                "url": format!("http://127.0.0.1:{}", port),
+                "llama_dir": llama_dir,
+                "llama_dir_auto_detected": auto_detected
             }).to_string())
         }
 
