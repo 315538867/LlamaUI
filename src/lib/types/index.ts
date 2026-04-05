@@ -134,7 +134,6 @@ export interface LaunchConfig {
   seed?: number;
   mlock?: boolean;
   no_mmap?: boolean;
-  api_key?: string;
   system_prompt?: string;
   prompt?: string;
   predict?: number;
