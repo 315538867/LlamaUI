@@ -15,8 +15,6 @@
   let gpuLayers = $state(99);
   let ctxSize = $state(4096);
   let threads = $state(0);
-  let port = $state(8000);
-  let host = $state("127.0.0.1");
   let flashAttn = $state(true);
   let contBatching = $state(true);
   let batchSize = $state(512);
@@ -72,8 +70,6 @@
       if (p.gpu_layers   != null) gpuLayers   = p.gpu_layers;
       if (p.ctx_size     != null) ctxSize     = p.ctx_size;
       if (p.threads      != null) threads     = p.threads;
-      if (p.port         != null) port        = p.port;
-      if (p.host         != null) host        = p.host;
       if (p.flash_attn   != null) flashAttn   = p.flash_attn;
       if (p.cont_batching != null) contBatching = p.cont_batching;
       if (p.batch_size   != null) batchSize   = p.batch_size;
@@ -102,8 +98,6 @@
         gpu_layers: gpuLayers,
         ctx_size:   ctxSize,
         threads:    threads > 0 ? threads : undefined,
-        port:       isServer ? port : undefined,
-        host:       isServer ? host : undefined,
         flash_attn: isServer ? flashAttn : undefined,
         cont_batching: isServer ? contBatching : undefined,
         batch_size:  isServer ? batchSize : undefined,
@@ -251,19 +245,6 @@
     <div class="section">
       <div class="section-title">服务配置</div>
       <div class="grid-2">
-        <label class="field">
-          <span class="field-label">监听地址 <span class="hint">--host，0.0.0.0 允许外部访问</span></span>
-          <select class="input" bind:value={host}>
-            <option value="127.0.0.1">127.0.0.1 — 仅本机</option>
-            <option value="0.0.0.0">0.0.0.0 — 开放网络访问</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="field-label">端口 <span class="hint">--port，默认 8000</span></span>
-          <input class="input" type="number" bind:value={port} min="1024" max="65535" />
-        </label>
-      </div>
-      <div class="grid-2" style="margin-top:8px;">
         <label class="field">
           <span class="field-label">API Key <span class="hint">--api-key，留空则无需鉴权</span></span>
           <input class="input font-mono" type="text" bind:value={apiKey} placeholder="sk-..." autocomplete="off" />

@@ -14,8 +14,6 @@ let config = $state<AppConfig>({
     gpu_layers: 99,
     ctx_size: 4096,
     threads: null,
-    port: 8000,
-    host: "127.0.0.1",
     flash_attn: true,
     cont_batching: true,
     batch_size: null,
@@ -32,6 +30,9 @@ let config = $state<AppConfig>({
     extra_args: null,
   },
   last_preset: null,
+  proxy_port: 8080,
+  proxy_cors: true,
+  proxy_allow_external: false,
 });
 
 let presets = $state<Preset[]>([]);

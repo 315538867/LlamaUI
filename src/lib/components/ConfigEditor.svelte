@@ -24,11 +24,10 @@
     if (configStore.loaded) llamaPath = configStore.config.llama_dir ?? "";
   });
 
-  // 从默认参数派生服务地址
-  const serverHost = $derived(configStore.config.default_params.host ?? "127.0.0.1");
-  const serverPort = $derived(configStore.config.default_params.port ?? 8000);
+  // 客户端接入使用代理地址（代理负责协议转换，llama.cpp 端口随机）
+  const proxyPort = $derived(configStore.config.proxy_port ?? 8080);
   const serverApiKey = $derived(configStore.config.default_params.api_key ?? "");
-  const baseUrl = $derived(`http://${serverHost}:${serverPort}`);
+  const baseUrl = $derived(`http://127.0.0.1:${proxyPort}`);
 
   async function handleDetect() {
     detecting = true;
@@ -176,7 +175,7 @@
     <div class="section">
       <div class="section-title">客户端接入</div>
       <div class="access-note">
-        基于启动器中配置的监听地址 <code>{baseUrl}</code>。如需外部访问请将监听地址设为 <code>0.0.0.0</code>。
+        通过代理地址 <code>{baseUrl}</code> 访问。llama.cpp 在本地随机端口运行，代理负责转发与协议转换。如需局域网访问，请在启动器的代理设置中开启"局域网访问"，并将 <code>127.0.0.1</code> 替换为本机 IP。
       </div>
 
       <!-- Codex CLI -->

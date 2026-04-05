@@ -17,19 +17,19 @@ pub async fn start_llama(
     let llama_dir = app_config.llama_dir
         .ok_or("未配置 llama.cpp 路径，请先在设置中配置")?;
 
-    // 若 llama.cpp 端口与代理端口相同则清空，让进程管理器自动选随机端口，避免绑定冲突
-    let mut effective_config = config;
-    if effective_config.port == Some(app_config.proxy_port) {
-        effective_config.port = None;
-    }
+    process_manager.start(app, &llama_dir, &config).await?;
 
-    process_manager.start(app, &llama_dir, &effective_config).await?;
-
-    // 将实际分配的端口同步给 Proxy
+    // 大模型启动后，同步启动代理并将目标指向实际分配的端口
     let info = process_manager.get_info().await;
     if let Some(port) = info.port {
-        let host = effective_config.host.as_deref().unwrap_or("127.0.0.1");
-        proxy_state.update_llama_target(host, port);
+        let host = "127.0.0.1"; // llama.cpp 始终绑定本地，外部访问通过代理
+        proxy_state.start_for_llama(
+            app_config.proxy_port,
+            app_config.proxy_cors,
+            app_config.proxy_allow_external,
+            host,
+            port,
+        );
     }
 
     Ok(())
@@ -38,8 +38,11 @@ pub async fn start_llama(
 #[tauri::command]
 pub async fn stop_llama(
     process_manager: State<'_, Arc<ProcessManager>>,
+    proxy_state: State<'_, Arc<ProxyState>>,
 ) -> Result<(), String> {
-    process_manager.stop().await
+    process_manager.stop().await?;
+    proxy_state.stop();
+    Ok(())
 }
 
 #[tauri::command]

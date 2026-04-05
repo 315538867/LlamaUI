@@ -17,8 +17,6 @@ export interface LaunchConfig {
   gpu_layers?: number;
   ctx_size?: number;
   threads?: number;
-  port?: number;
-  host?: string;
   flash_attn?: boolean;
   cont_batching?: boolean;
   batch_size?: number;
@@ -58,14 +56,15 @@ export interface AppConfig {
   model_dirs: string[];
   default_params: LaunchParams;
   last_preset: string | null;
+  proxy_port: number;
+  proxy_cors: boolean;
+  proxy_allow_external: boolean;
 }
 
 export interface LaunchParams {
   gpu_layers: number | null;
   ctx_size: number | null;
   threads: number | null;
-  port: number | null;
-  host: string | null;
   flash_attn: boolean | null;
   cont_batching: boolean | null;
   batch_size: number | null;

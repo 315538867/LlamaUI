@@ -123,10 +123,9 @@ impl ProcessManager {
             args.push(threads.to_string());
         }
 
-        // 确定实际端口（0 或 None → 随机空闲端口）
+        // 始终随机分配端口，避免与代理或其他服务冲突
         let actual_port = if matches!(config.mode, LaunchMode::Server) {
-            let p = config.port.unwrap_or(0);
-            Some(if p == 0 { find_free_port() } else { p })
+            Some(find_free_port())
         } else {
             None
         };

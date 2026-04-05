@@ -19,32 +19,29 @@ impl ProxyState {
         }
     }
 
-    /// App 启动时自动调用
-    pub fn auto_start(&self, port: u16, target: String, cors: bool, allow_external: bool) {
-        let mut handle_guard = self.handle.lock().unwrap();
-        if handle_guard.is_some() {
-            return;
-        }
-        let config = ProxyConfig::new(port, target, cors, allow_external);
+    /// llama.cpp 启动后调用：用最新代理设置（从配置读取）启动代理，目标指向 llama.cpp
+    pub fn start_for_llama(&self, proxy_port: u16, cors: bool, allow_external: bool, llama_host: &str, llama_port: u16) {
+        let target = format!("http://{}:{}", llama_host, llama_port);
+        let config = ProxyConfig::new(proxy_port, target, cors, allow_external);
         let handle = start(config.clone());
-        *handle_guard = Some(handle);
-        *self.config.lock().unwrap() = Some(config);
+        // 先停掉旧实例
+        if let Ok(mut h) = self.handle.lock() {
+            if let Some(old) = h.take() { old.abort(); }
+            *h = Some(handle);
+        }
+        if let Ok(mut c) = self.config.lock() { *c = Some(config); }
     }
 
-    /// llama.cpp 启动后更新转发目标地址
-    pub fn update_llama_target(&self, host: &str, port: u16) {
-        let target = format!("http://{}:{}", host, port);
-        if let Ok(config_guard) = self.config.lock() {
-            if let Some(ref config) = *config_guard {
-                if let Ok(mut t) = config.target.write() {
-                    *t = target;
-                }
-            }
+    /// 停止代理（llama.cpp 停止时调用）
+    pub fn stop(&self) {
+        if let Ok(mut h) = self.handle.lock() {
+            if let Some(handle) = h.take() { handle.abort(); }
         }
+        if let Ok(mut c) = self.config.lock() { *c = None; }
     }
 }
 
-/// 停止并以新参数重启代理，同时持久化设置
+/// 修改代理设置并持久化；若代理正在运行则同步重启
 #[tauri::command]
 pub fn restart_proxy(
     port: u16,
@@ -60,18 +57,19 @@ pub fn restart_proxy(
     app_config.proxy_allow_external = allow_external;
     config_store.save_config(&app_config)?;
 
-    // 重启 Proxy
+    // 只有代理正在运行时才重启（代理生命周期跟随 llama.cpp）
     let mut handle_guard = state.handle.lock().map_err(|e| e.to_string())?;
-    let mut config_guard = state.config.lock().map_err(|e| e.to_string())?;
+    if handle_guard.is_none() {
+        return Ok(()); // 未运行，只保存设置即可
+    }
 
+    let mut config_guard = state.config.lock().map_err(|e| e.to_string())?;
     let current_target = config_guard
         .as_ref()
         .and_then(|c| c.target.read().ok().map(|t| t.clone()))
-        .unwrap_or_else(|| "http://127.0.0.1:8000".into());
+        .unwrap_or_else(|| "http://127.0.0.1:18000".into());
 
-    if let Some(h) = handle_guard.take() {
-        h.abort();
-    }
+    if let Some(h) = handle_guard.take() { h.abort(); }
 
     let config = ProxyConfig::new(port, current_target, cors, allow_external);
     let handle = start(config.clone());

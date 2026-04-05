@@ -39,8 +39,6 @@ pub struct LaunchParams {
     pub gpu_layers: Option<i32>,
     pub ctx_size: Option<u32>,
     pub threads: Option<u32>,
-    pub port: Option<u16>,
-    pub host: Option<String>,
     pub flash_attn: Option<bool>,
     pub cont_batching: Option<bool>,
     pub batch_size: Option<u32>,
@@ -63,8 +61,6 @@ impl Default for LaunchParams {
             gpu_layers: Some(99),
             ctx_size: Some(4096),
             threads: None,
-            port: None,            // None → 启动时随机分配空闲端口
-            host: Some("127.0.0.1".into()),
             flash_attn: Some(true),
             cont_batching: Some(true),
             batch_size: None,
