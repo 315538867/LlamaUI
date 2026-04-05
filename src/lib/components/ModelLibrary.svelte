@@ -30,6 +30,7 @@
   let saving = $state(false);
   let actionErr = $state("");
   let actionErrTimer: ReturnType<typeof setTimeout> | undefined;
+  let paramsCollapsed = $state(false);
 
   // Edit form state (lifted here, passed down to InstanceEditForm)
   let editName = $state("");
@@ -384,6 +385,52 @@
               <span class="log-label">{selectedName} 进程日志</span>
               <button class="btn-ghost-sm" onclick={() => { if(selectedName) instanceStore.clearLogs(selectedName); }}>清空</button>
             </div>
+            {@const displayParams = selectedInfo?.config?.params ?? selectedConfig?.params ?? null}
+            {#if displayParams}
+              {@const PARAM_LABELS: Record<string, string> = {
+                gpu_layers: "GPU 层数",
+                ctx_size: "上下文长度",
+                threads: "线程数",
+                flash_attn: "Flash Attention",
+                cont_batching: "连续批处理",
+                batch_size: "批处理大小",
+                ubatch_size: "微批大小",
+                parallel: "并行槽",
+                cache_type_k: "KV缓存K类型",
+                cache_type_v: "KV缓存V类型",
+                no_kv_offload: "禁用KV卸载",
+                seed: "随机种子",
+                mlock: "内存锁定",
+                no_mmap: "禁用内存映射",
+                extra_args: "额外参数",
+              }}
+              {@const activeParams = Object.entries(displayParams).filter(([, v]) => v !== null && v !== false)}
+              {#if activeParams.length > 0}
+                <div class="params-bar">
+                  <span class="params-title">启动参数</span>
+                  <button class="btn-ghost-sm" onclick={() => { paramsCollapsed = !paramsCollapsed; }}>
+                    {paramsCollapsed ? "展开" : "收起"}
+                  </button>
+                </div>
+                {#if !paramsCollapsed}
+                  <div class="params-grid">
+                    {#each activeParams as [key, val]}
+                      {#if key === "extra_args"}
+                        <div class="param-item param-full">
+                          <span class="param-label">{PARAM_LABELS[key] ?? key}</span>
+                          <span class="param-value">{val}</span>
+                        </div>
+                      {:else}
+                        <div class="param-item">
+                          <span class="param-label">{PARAM_LABELS[key] ?? key}</span>
+                          <span class="param-value">{typeof val === "boolean" ? "✓" : val}</span>
+                        </div>
+                      {/if}
+                    {/each}
+                  </div>
+                {/if}
+              {/if}
+            {/if}
             <LogTerminal logs={selectedLogs} />
           {/if}
         </div>
@@ -758,6 +805,59 @@
 .log-label {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.params-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.params-title {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.params-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 4px 8px;
+  padding: 8px 12px;
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.param-item {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.param-item.param-full {
+  grid-column: 1 / -1;
+}
+
+.param-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.param-value {
+  font-size: 11px;
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .btn-ghost {
