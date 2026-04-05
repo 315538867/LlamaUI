@@ -1,4 +1,5 @@
 import type { AppConfig, Preset } from "../types";
+import { logger } from "../utils/logger";
 import {
   getConfig,
   saveConfig as saveConfigApi,
@@ -64,7 +65,7 @@ export function getConfigStore() {
         loaded = true;
       } catch (e) {
         loadError = String(e);
-        console.error("Failed to load config:", e);
+        logger.error("Failed to load config:", e);
       }
     },
 

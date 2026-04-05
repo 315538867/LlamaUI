@@ -3,6 +3,7 @@
   import { detectLlama, validateLlamaPath } from "../services/tauri-bridge";
   import { open } from "@tauri-apps/plugin-dialog";
   import type { LlamaInstall } from "../types";
+  import { logger } from "../utils/logger";
 
   const configStore = getConfigStore();
 
@@ -33,7 +34,7 @@
     detecting = true;
     detectedInstalls = [];
     try { detectedInstalls = await detectLlama(); }
-    catch (e) { console.error(e); }
+    catch (e) { logger.error("detectLlama failed:", e); }
     finally { detecting = false; }
   }
 

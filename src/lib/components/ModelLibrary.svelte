@@ -9,6 +9,7 @@
     scanModels,
   } from "../services/tauri-bridge";
   import type { InstanceConfig, InstanceInfo, ModelInfo, LaunchParams } from "../types";
+  import { logger } from "../utils/logger";
   import LogTerminal from "./LogTerminal.svelte";
   import ProxyConfigPanel from "./ProxyConfigPanel.svelte";
   import InstanceEditForm from "./InstanceEditForm.svelte";
@@ -139,7 +140,7 @@
       const result = await scanModels();
       availableModels = result.models;
     } catch (e) {
-      console.error(e);
+      logger.error("scanModels failed:", e);
     } finally {
       scanning = false;
     }

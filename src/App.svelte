@@ -14,10 +14,20 @@
   const instanceStore = getInstanceStore();
 
   let activePage = $state<PageId>("instances");
-
   let dismissedError = $state(false);
+  let globalError = $state<string | null>(null);
 
-  onMount(() => { configStore.load(); });
+  onMount(() => {
+    configStore.load();
+
+    window.onerror = (_msg, _src, _line, _col, err) => {
+      globalError = err?.message ?? String(_msg);
+      return false;
+    };
+    window.onunhandledrejection = (ev) => {
+      globalError = ev.reason instanceof Error ? ev.reason.message : String(ev.reason);
+    };
+  });
   onDestroy(() => { instanceStore.destroy(); });
 </script>
 
@@ -26,6 +36,12 @@
     <div class="load-error-bar">
       配置加载失败：{configStore.loadError}
       <button onclick={() => { dismissedError = true; }}>✕</button>
+    </div>
+  {/if}
+  {#if globalError}
+    <div class="load-error-bar">
+      运行时错误：{globalError}
+      <button onclick={() => { globalError = null; }}>✕</button>
     </div>
   {/if}
   <div class="flex min-h-0 flex-1 overflow-hidden">
