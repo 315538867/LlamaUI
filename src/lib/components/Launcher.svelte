@@ -35,7 +35,7 @@
   let showAdvanced = $state(false);
   let paramsLoaded = false;
 
-  // 代理状态（自动启动，只读）
+  // 代理设置
   let proxyPort = $state(8080);
   let proxyRunning = $state(false);
   let proxyCors = $state(true);
@@ -83,6 +83,10 @@
       if (p.no_mmap      != null) noMmap      = p.no_mmap;
       if (p.api_key      != null) apiKey      = p.api_key;
       if (p.system_prompt != null) systemPrompt = p.system_prompt;
+      // 从持久化配置预加载代理设置
+      proxyPort          = configStore.config.proxy_port ?? 8080;
+      proxyCors          = configStore.config.proxy_cors ?? true;
+      proxyAllowExternal = configStore.config.proxy_allow_external ?? false;
     }
   });
 
@@ -362,6 +366,12 @@
       </div>
       <div class="proxy-hint">
         将 Codex CLI 的 OpenAI Responses API 请求转换为 Anthropic Messages API 格式，转发给 llama.cpp。
+      </div>
+      <div class="grid-2" style="margin-top:6px;">
+        <label class="field">
+          <span class="field-label">端口 <span class="hint">代理监听端口，默认 8080</span></span>
+          <input class="input" type="number" bind:value={proxyPort} min="1024" max="65535" onchange={handleProxySettingChange} />
+        </label>
       </div>
       <div class="switch-row" style="margin-top:6px;">
         <label class="switch-item">
