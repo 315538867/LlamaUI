@@ -450,7 +450,7 @@
           {:else}
             <button class="action-btn btn-start" onclick={handleStart} disabled={saving}>启动</button>
           {/if}
-          <button class="action-btn btn-delete" onclick={handleDelete} disabled={saving || isRunning}>删除</button>
+          <button class="action-btn btn-delete" onclick={handleDelete} disabled={saving}>删除</button>
         {:else}
           <button class="action-btn btn-ghost-action" onclick={() => { createStep = "model"; }}>← 重选模型</button>
           <button class="action-btn btn-start" onclick={handleSaveAndStart} disabled={saving || !editName || !editModelPath}>

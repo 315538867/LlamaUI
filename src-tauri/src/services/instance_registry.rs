@@ -439,7 +439,14 @@ async fn maybe_flip_to_running(
     let lower = line.to_lowercase();
     if lower.contains("listening") || lower.contains("server listening") {
         guard.status = InstanceStatus::Running;
-        app.emit("llama://instance-running", instance_name).ok();
+        let snapshot = guard.clone();
+        drop(guard);
+        // Emit full instances snapshot so the frontend store updates
+        app.emit("llama://instances", &{
+            let mut m = HashMap::new();
+            m.insert(instance_name.to_string(), snapshot);
+            m
+        }).ok();
     }
 }
 
