@@ -7,10 +7,11 @@
     stopInstance,
     deleteInstanceConfig,
     scanModels,
-    restartProxy,
   } from "../services/tauri-bridge";
   import type { InstanceConfig, InstanceInfo, ModelInfo, LaunchParams } from "../types";
   import LogTerminal from "./LogTerminal.svelte";
+  import ProxyConfigPanel from "./ProxyConfigPanel.svelte";
+  import InstanceEditForm from "./InstanceEditForm.svelte";
 
   const instanceStore = getInstanceStore();
   const configStore = getConfigStore();
@@ -20,8 +21,8 @@
 
   let selectedName = $state<string | null>(null);
   let isCreating = $state(false);
-  let createStep = $state<"model" | "config">("model"); // 新建两步流程
-  let showProxyPanel = $state(false);   // 全局代理面板（配置 + 日志）
+  let createStep = $state<"model" | "config">("model");
+  let showProxyPanel = $state(false);
   let activeTab = $state<"config" | "logs">("config");
   let availableModels = $state<ModelInfo[]>([]);
   let scanning = $state(false);
@@ -29,25 +30,7 @@
   let actionErr = $state("");
   let actionErrTimer: ReturnType<typeof setTimeout> | undefined;
 
-  // Proxy settings form
-  let proxyPort = $state(configStore.config.proxy_port ?? 8080);
-  let proxyCors = $state(configStore.config.proxy_cors ?? true);
-  let proxyAllowExternal = $state(configStore.config.proxy_allow_external ?? false);
-  let proxyApiKey = $state(configStore.config.proxy_api_key ?? "");
-  let proxyApplying = $state(false);
-  let proxyMsg = $state("");
-  let proxyMsgTimer: ReturnType<typeof setTimeout> | undefined;
-
-  $effect(() => {
-    if (configStore.loaded) {
-      proxyPort = configStore.config.proxy_port ?? 8080;
-      proxyCors = configStore.config.proxy_cors ?? true;
-      proxyAllowExternal = configStore.config.proxy_allow_external ?? false;
-      proxyApiKey = configStore.config.proxy_api_key ?? "";
-    }
-  });
-
-  // Edit form
+  // Edit form state (lifted here, passed down to InstanceEditForm)
   let editName = $state("");
   let editModelPath = $state("");
   let editMode = $state<"server" | "cli">("server");
@@ -91,6 +74,10 @@
   const isRunning = $derived(selectedInfo?.status === "running");
   const isStarting = $derived(selectedInfo?.status === "starting");
 
+  const selectedLogs = $derived(
+    selectedName ? instanceStore.getInstanceLogs(selectedName) : []
+  );
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   function showErr(e: unknown) {
@@ -129,12 +116,10 @@
 
   function generateInstanceName(m: ModelInfo): string {
     let base = m.name;
-    // Strip quantization suffix (e.g. "-Q4_K_M", ".Q5_K_M", "_Q8_0")
     if (m.quantization) {
       const re = new RegExp(`[-._]${m.quantization}$`, "i");
       base = base.replace(re, "");
     }
-    // Deduplicate against existing instance names
     const taken = new Set(savedInstances.map((i) => i.name));
     if (!taken.has(base)) return base;
     let n = 2;
@@ -177,7 +162,6 @@
     try {
       const cfg = buildConfig();
       await startInstance(cfg);
-      // Config is persisted by backend; reload config to refresh saved list
       await configStore.load();
       selectedName = cfg.name;
       isCreating = false;
@@ -249,41 +233,6 @@
   function filename(path: string): string {
     return path.split(/[/\\]/).pop() ?? path;
   }
-
-  // Per-instance logs formatted for LogTerminal
-  const selectedLogs = $derived(
-    selectedName ? instanceStore.getInstanceLogs(selectedName) : []
-  );
-
-  const proxyLogLines = $derived(
-    proxyStore.logs.map((e) => ({
-      stream: e.level === "error" ? "stderr" : "stdout",
-      line: `[${e.level.toUpperCase()}] ${e.message}`,
-      ts: e.timestamp,
-    }))
-  );
-
-  async function applyProxySettings() {
-    proxyApplying = true;
-    proxyMsg = "";
-    try {
-      await configStore.save({
-        ...configStore.config,
-        proxy_port: proxyPort,
-        proxy_cors: proxyCors,
-        proxy_allow_external: proxyAllowExternal,
-        proxy_api_key: proxyApiKey || null,
-      });
-      await restartProxy(proxyPort, proxyCors, proxyAllowExternal, proxyApiKey || null);
-      clearTimeout(proxyMsgTimer);
-      proxyMsg = "已应用 ✓";
-      proxyMsgTimer = setTimeout(() => { proxyMsg = ""; }, 2000);
-    } catch (e) {
-      proxyMsg = String(e);
-    } finally {
-      proxyApplying = false;
-    }
-  }
 </script>
 
 <div class="root">
@@ -326,7 +275,6 @@
       {/if}
     </div>
 
-    <!-- 左侧底部：全局代理面板入口 -->
     <div class="panel-footer">
       <button
         class="proxy-log-btn"
@@ -342,57 +290,10 @@
     </div>
   </div>
 
-  <!-- ── Right: Config / Log panel ────────────────────────────────────────── -->
+  <!-- ── Right: Content panel ─────────────────────────────────────────────── -->
   <div class="panel-right">
     {#if showProxyPanel}
-      <!-- 全局代理面板：配置 + 日志 -->
-      <div class="proxy-panel">
-        <!-- 代理配置 -->
-        <div class="proxy-config-section">
-          <div class="proxy-section-title">代理配置</div>
-          <div class="proxy-fields">
-            <div class="proxy-field-row">
-              <label class="proxy-field-label" for="p-port">端口</label>
-              <input id="p-port" class="field-input w-num" type="number" min="1" max="65535" bind:value={proxyPort} />
-            </div>
-            <div class="proxy-field-row">
-              <label class="proxy-field-label" for="p-apikey">API Key</label>
-              <input id="p-apikey" class="field-input flex-1" type="password" bind:value={proxyApiKey} placeholder="可选，保护代理入口" />
-            </div>
-            <div class="proxy-field-row">
-              <span class="proxy-field-label">CORS</span>
-              <label class="toggle">
-                <input type="checkbox" bind:checked={proxyCors} />
-                <span class="toggle-track"></span>
-              </label>
-            </div>
-            <div class="proxy-field-row">
-              <span class="proxy-field-label">局域网访问</span>
-              <label class="toggle">
-                <input type="checkbox" bind:checked={proxyAllowExternal} />
-                <span class="toggle-track"></span>
-              </label>
-            </div>
-          </div>
-          <div class="proxy-apply-row">
-            <button class="action-btn btn-start" onclick={applyProxySettings} disabled={proxyApplying}>
-              {proxyApplying ? "应用中..." : "应用"}
-            </button>
-            {#if proxyMsg}
-              <span class="proxy-apply-msg" class:ok={proxyMsg.startsWith("已应用")}>{proxyMsg}</span>
-            {/if}
-          </div>
-        </div>
-
-        <!-- 代理日志 -->
-        <div class="proxy-log-section">
-          <div class="log-toolbar">
-            <span class="log-label">代理日志</span>
-            <button class="btn-ghost-sm" onclick={() => proxyStore.clearLogs()}>清空</button>
-          </div>
-          <LogTerminal logs={proxyLogLines} />
-        </div>
-      </div>
+      <ProxyConfigPanel />
 
     {:else if !selectedName && !isCreating}
       <div class="empty-state">
@@ -401,7 +302,6 @@
       </div>
 
     {:else if isCreating && createStep === "model"}
-      <!-- 新建第一步：选择模型 -->
       <div class="model-pick-panel">
         <div class="model-pick-header">
           <span class="model-pick-title">选择模型文件</span>
@@ -440,7 +340,6 @@
         <button class="tab" class:active={activeTab === "logs"}   onclick={() => activeTab = "logs"}>日志</button>
         <div class="tab-spacer"></div>
 
-        <!-- Actions -->
         {#if !isCreating}
           {#if isRunning || isStarting}
             <button class="action-btn btn-stop" onclick={handleStop} disabled={saving || isStarting}>
@@ -462,224 +361,21 @@
         <div class="err-bar">{actionErr}</div>
       {/if}
 
-      <!-- Config Tab -->
       {#if activeTab === "config"}
-        <div class="config-body">
-
-          <!-- Instance name -->
-          <div class="field-row">
-            <label class="field-label" for="edit-name">实例名称</label>
-            <input id="edit-name" class="field-input" type="text" bind:value={editName}
-              placeholder="my-model（作为 Codex model 字段）"
-              disabled={!isCreating}
-            />
-          </div>
-          <div class="field-hint">此名称将作为 Codex 请求中的 <code>model</code> 字段路由到此实例</div>
-
-          <!-- Model path (只读显示，新建时已在第一步选好) -->
-          <div class="field-row">
-            <label class="field-label" for="edit-model">模型文件</label>
-            <div class="model-picker">
-              <input id="edit-model" class="field-input flex-1" type="text" bind:value={editModelPath}
-                placeholder="/path/to/model.gguf" readonly={isCreating} />
-              {#if !isCreating}
-                <button class="btn-ghost" onclick={handleScan} disabled={scanning}>
-                  {scanning ? "扫描中..." : "扫描"}
-                </button>
-              {/if}
-            </div>
-          </div>
-
-          <!-- Mode -->
-          <div class="field-row">
-            <label class="field-label" for="edit-mode">运行模式</label>
-            <select id="edit-mode" class="field-select" bind:value={editMode}>
-              <option value="server">server（HTTP API）</option>
-              <option value="cli">cli（交互式）</option>
-            </select>
-          </div>
-
-          <div class="section-divider">参数</div>
-
-          <!-- GPU layers -->
-          <div class="field-row">
-            <label class="field-label" for="edit-gpu">GPU 层数</label>
-            <input id="edit-gpu" class="field-input w-num" type="number"
-              value={editParams.gpu_layers ?? ""}
-              oninput={(e) => { editParams.gpu_layers = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
-              placeholder="99"
-            />
-          </div>
-
-          <!-- Context size -->
-          <div class="field-row">
-            <label class="field-label" for="edit-ctx">上下文大小</label>
-            <input id="edit-ctx" class="field-input w-num" type="number"
-              value={editParams.ctx_size ?? ""}
-              oninput={(e) => { editParams.ctx_size = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
-              placeholder="4096"
-            />
-          </div>
-
-          <!-- Parallel -->
-          <div class="field-row">
-            <label class="field-label" for="edit-parallel">并发槽数</label>
-            <input id="edit-parallel" class="field-input w-num" type="number"
-              value={editParams.parallel ?? ""}
-              oninput={(e) => { editParams.parallel = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
-              placeholder="1"
-            />
-          </div>
-
-          <!-- Threads -->
-          <div class="field-row">
-            <label class="field-label" for="edit-threads">CPU 线程</label>
-            <input id="edit-threads" class="field-input w-num" type="number"
-              value={editParams.threads ?? ""}
-              oninput={(e) => { editParams.threads = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
-              placeholder="自动"
-            />
-          </div>
-
-          <!-- Batch size -->
-          <div class="field-row">
-            <label class="field-label" for="edit-batch">批处理大小</label>
-            <input id="edit-batch" class="field-input w-num" type="number"
-              value={editParams.batch_size ?? ""}
-              oninput={(e) => { editParams.batch_size = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
-              placeholder="512"
-            />
-          </div>
-
-          <!-- uBatch size -->
-          <div class="field-row">
-            <label class="field-label" for="edit-ubatch">解码批次</label>
-            <input id="edit-ubatch" class="field-input w-num" type="number"
-              value={editParams.ubatch_size ?? ""}
-              oninput={(e) => { editParams.ubatch_size = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
-              placeholder="512"
-            />
-          </div>
-
-          <!-- KV Cache types -->
-          <div class="field-row">
-            <label class="field-label" for="edit-cache-k">KV Cache K</label>
-            <select id="edit-cache-k" class="field-select" style="flex:1;"
-              value={editParams.cache_type_k ?? "f16"}
-              onchange={(e) => { editParams.cache_type_k = (e.target as HTMLSelectElement).value === "f16" ? null : (e.target as HTMLSelectElement).value; }}
-            >
-              <option value="f16">f16（默认）</option>
-              <option value="q8_0">q8_0</option>
-              <option value="q4_0">q4_0</option>
-              <option value="q4_1">q4_1</option>
-              <option value="iq4_nl">iq4_nl</option>
-              <option value="q5_0">q5_0</option>
-              <option value="q5_1">q5_1</option>
-            </select>
-          </div>
-
-          <div class="field-row">
-            <label class="field-label" for="edit-cache-v">KV Cache V</label>
-            <select id="edit-cache-v" class="field-select" style="flex:1;"
-              value={editParams.cache_type_v ?? "f16"}
-              onchange={(e) => { editParams.cache_type_v = (e.target as HTMLSelectElement).value === "f16" ? null : (e.target as HTMLSelectElement).value; }}
-            >
-              <option value="f16">f16（默认）</option>
-              <option value="q8_0">q8_0</option>
-              <option value="q4_0">q4_0</option>
-              <option value="q4_1">q4_1</option>
-              <option value="iq4_nl">iq4_nl</option>
-              <option value="q5_0">q5_0</option>
-              <option value="q5_1">q5_1</option>
-            </select>
-          </div>
-
-          <!-- Seed -->
-          <div class="field-row">
-            <label class="field-label" for="edit-seed">随机种子</label>
-            <input id="edit-seed" class="field-input w-num" type="number"
-              value={editParams.seed ?? ""}
-              oninput={(e) => { editParams.seed = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
-              placeholder="-1（随机）"
-            />
-          </div>
-
-          <!-- Toggles -->
-          <div class="field-row">
-            <span class="field-label">Flash Attention</span>
-            <label class="toggle">
-              <input type="checkbox"
-                checked={editParams.flash_attn ?? false}
-                onchange={(e) => { editParams.flash_attn = (e.target as HTMLInputElement).checked; }}
-              />
-              <span class="toggle-track"></span>
-            </label>
-          </div>
-
-          <div class="field-row">
-            <span class="field-label">持续批处理</span>
-            <label class="toggle">
-              <input type="checkbox"
-                checked={editParams.cont_batching ?? false}
-                onchange={(e) => { editParams.cont_batching = (e.target as HTMLInputElement).checked; }}
-              />
-              <span class="toggle-track"></span>
-            </label>
-          </div>
-
-          <div class="field-row">
-            <span class="field-label">锁定内存</span>
-            <label class="toggle">
-              <input type="checkbox"
-                checked={editParams.mlock ?? false}
-                onchange={(e) => { editParams.mlock = (e.target as HTMLInputElement).checked || null; }}
-              />
-              <span class="toggle-track"></span>
-            </label>
-          </div>
-
-          <div class="field-row">
-            <span class="field-label">禁用 mmap</span>
-            <label class="toggle">
-              <input type="checkbox"
-                checked={editParams.no_mmap ?? false}
-                onchange={(e) => { editParams.no_mmap = (e.target as HTMLInputElement).checked || null; }}
-              />
-              <span class="toggle-track"></span>
-            </label>
-          </div>
-
-          <div class="field-row">
-            <span class="field-label">禁用 KV 卸载</span>
-            <label class="toggle">
-              <input type="checkbox"
-                checked={editParams.no_kv_offload ?? false}
-                onchange={(e) => { editParams.no_kv_offload = (e.target as HTMLInputElement).checked || null; }}
-              />
-              <span class="toggle-track"></span>
-            </label>
-          </div>
-
-          <!-- Extra args -->
-          <div class="field-row">
-            <label class="field-label" for="edit-extra">额外参数</label>
-            <input id="edit-extra" class="field-input flex-1" type="text"
-              value={editParams.extra_args ?? ""}
-              oninput={(e) => { editParams.extra_args = (e.target as HTMLInputElement).value || null; }}
-              placeholder="如 --no-mmap --mlock"
-            />
-          </div>
-
-          <!-- Info row when running -->
-          {#if selectedInfo?.status === "running"}
-            <div class="running-info">
-              <span>端口 <code>:{selectedInfo.port}</code></span>
-              <span>PID <code>{selectedInfo.pid}</code></span>
-            </div>
-          {/if}
-        </div>
-
-      <!-- Log Tab -->
+        <InstanceEditForm
+          {editName}
+          {editModelPath}
+          {editMode}
+          {editParams}
+          {isCreating}
+          {scanning}
+          selectedInfo={selectedInfo}
+          onNameChange={(v) => { editName = v; }}
+          onModelPathChange={(v) => { editModelPath = v; }}
+          onModeChange={(v) => { editMode = v; }}
+          onParamsChange={(p) => { editParams = p; }}
+          onScan={handleScan}
+        />
       {:else if activeTab === "logs"}
         <div class="log-area">
           {#if selectedName}
@@ -948,222 +644,6 @@
   flex-shrink: 0;
 }
 
-/* ── Config body ── */
-.config-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.section-divider {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--text-muted);
-  border-top: 1px solid var(--border-subtle);
-  padding-top: 8px;
-  margin-top: 4px;
-}
-
-.field-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 28px;
-}
-
-.field-label {
-  font-size: 11px;
-  color: var(--text-secondary);
-  width: 100px;
-  flex-shrink: 0;
-}
-
-.field-input {
-  height: 26px;
-  padding: 0 8px;
-  font-size: 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  color: var(--text-base);
-  outline: none;
-  transition: border-color 0.12s;
-  min-width: 0;
-}
-.field-input:focus { border-color: var(--accent); }
-.field-input.flex-1 { flex: 1; }
-.field-input.w-num { width: 80px; }
-
-.field-select {
-  height: 26px;
-  padding: 0 6px;
-  font-size: 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  color: var(--text-base);
-  outline: none;
-  cursor: pointer;
-  flex: 1;
-}
-
-.model-picker {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-}
-
-.field-hint {
-  font-size: 10px;
-  color: var(--text-muted);
-  padding-left: 110px;
-  line-height: 1.4;
-}
-.field-hint code {
-  font-family: monospace;
-  background: var(--bg-overlay);
-  padding: 0 3px;
-  border-radius: 2px;
-}
-
-/* Toggle */
-.toggle {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  position: relative;
-}
-.toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
-.toggle-track {
-  width: 32px;
-  height: 18px;
-  border-radius: 9px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  transition: background 0.15s, border-color 0.15s;
-  position: relative;
-}
-.toggle-track::after {
-  content: "";
-  position: absolute;
-  left: 2px;
-  top: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  transition: left 0.15s, background 0.15s;
-}
-.toggle input:checked + .toggle-track {
-  background: rgba(59,130,246,0.25);
-  border-color: var(--accent);
-}
-.toggle input:checked + .toggle-track::after {
-  left: 16px;
-  background: var(--accent);
-}
-
-.btn-ghost {
-  height: 26px;
-  padding: 0 10px;
-  font-size: 11px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: background 0.12s;
-}
-.btn-ghost:hover { background: var(--bg-hover); }
-.btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.running-info {
-  display: flex;
-  gap: 16px;
-  padding: 8px 0 0;
-  font-size: 11px;
-  color: var(--text-muted);
-  border-top: 1px solid var(--border-subtle);
-  margin-top: 4px;
-}
-.running-info code {
-  font-family: monospace;
-  color: var(--text-secondary);
-}
-
-/* ── Proxy panel ── */
-.proxy-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.proxy-config-section {
-  flex-shrink: 0;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-surface);
-}
-
-.proxy-section-title {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  margin-bottom: 10px;
-}
-
-.proxy-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.proxy-field-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 26px;
-}
-
-.proxy-field-label {
-  font-size: 11px;
-  color: var(--text-secondary);
-  width: 80px;
-  flex-shrink: 0;
-}
-
-.proxy-apply-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.proxy-apply-msg {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-.proxy-apply-msg.ok { color: var(--success); }
-
-.proxy-log-section {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 /* ── Model pick panel ── */
 .model-pick-panel {
   flex: 1;
@@ -1278,6 +758,22 @@
   font-size: 11px;
   color: var(--text-muted);
 }
+
+.btn-ghost {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.12s;
+}
+.btn-ghost:hover { background: var(--bg-hover); }
+.btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-ghost-sm {
   font-size: 10px;
