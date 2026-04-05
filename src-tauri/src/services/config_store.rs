@@ -38,7 +38,7 @@ pub struct LaunchParams {
 impl Default for LaunchParams {
     fn default() -> Self {
         Self {
-            gpu_layers: Some(99),
+            gpu_layers: Some(99), // 99 = 全部卸载至 GPU，llama.cpp 自动限制不超过模型实际层数
             ctx_size: Some(4096),
             threads: None,
             flash_attn: Some(true),

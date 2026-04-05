@@ -47,7 +47,7 @@ fn tool_definitions() -> Value {
                 "type": "object",
                 "properties": {
                     "model": { "type": "string", "description": "模型名称或完整路径" },
-                    "gpu_layers": { "type": "integer", "description": "GPU 层数", "default": 99 },
+                    "gpu_layers": { "type": "integer", "description": "GPU 卸载层数（99 表示全部卸载，实际上限由模型层数决定）", "default": 99 },
                     "ctx_size": { "type": "integer", "description": "上下文长度", "default": 4096 },
                     "port": { "type": "integer", "description": "Server 端口", "default": 8000 }
                 },
