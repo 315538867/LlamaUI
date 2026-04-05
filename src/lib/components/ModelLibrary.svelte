@@ -128,12 +128,24 @@
     if (availableModels.length === 0) handleScan();
   }
 
-  function pickModel(path: string) {
-    editModelPath = path;
-    // Auto-fill name from filename (strip extension)
-    if (!editName) {
-      editName = path.split(/[/\\]/).pop()?.replace(/\.gguf$/i, "") ?? "";
+  function generateInstanceName(m: ModelInfo): string {
+    let base = m.name;
+    // Strip quantization suffix (e.g. "-Q4_K_M", ".Q5_K_M", "_Q8_0")
+    if (m.quantization) {
+      const re = new RegExp(`[-._]${m.quantization}$`, "i");
+      base = base.replace(re, "");
     }
+    // Deduplicate against existing instance names
+    const taken = new Set(savedInstances.map((i) => i.name));
+    if (!taken.has(base)) return base;
+    let n = 2;
+    while (taken.has(`${base}-${n}`)) n++;
+    return `${base}-${n}`;
+  }
+
+  function pickModel(m: ModelInfo) {
+    editModelPath = m.path;
+    editName = generateInstanceName(m);
     createStep = "config";
   }
 
@@ -408,7 +420,7 @@
         {:else}
           <div class="model-pick-list">
             {#each availableModels as m}
-              <button class="model-pick-item" onclick={() => pickModel(m.path)}>
+              <button class="model-pick-item" onclick={() => pickModel(m)}>
                 <div class="model-pick-name">{m.name}</div>
                 <div class="model-pick-meta">
                   <span class="model-pick-size">{m.size_display}</span>
