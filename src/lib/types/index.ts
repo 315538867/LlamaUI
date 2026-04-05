@@ -104,38 +104,3 @@ export interface LlamaInstall {
 
 export type PageId = "instances" | "models" | "settings";
 
-// ── Legacy (kept for backward compat) ────────────────────────────────────────
-
-export type ProcessStatus = "stopped" | "starting" | "running" | "error";
-
-export interface ProcessInfo {
-  status: ProcessStatus;
-  mode: LaunchMode | null;
-  model: string | null;
-  port: number | null;
-  pid: number | null;
-  started_at: number | null;
-}
-
-export interface LaunchConfig {
-  model_path: string;
-  mode: LaunchMode;
-  gpu_layers?: number;
-  ctx_size?: number;
-  threads?: number;
-  flash_attn?: boolean;
-  cont_batching?: boolean;
-  batch_size?: number;
-  ubatch_size?: number;
-  parallel?: number;
-  cache_type_k?: string;
-  cache_type_v?: string;
-  no_kv_offload?: boolean;
-  seed?: number;
-  mlock?: boolean;
-  no_mmap?: boolean;
-  system_prompt?: string;
-  prompt?: string;
-  predict?: number;
-  extra_args?: string;
-}
