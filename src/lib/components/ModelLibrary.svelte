@@ -7,6 +7,7 @@
     stopInstance,
     deleteInstanceConfig,
     scanModels,
+    restartProxy,
   } from "../services/tauri-bridge";
   import type { InstanceConfig, InstanceInfo, ModelInfo, LaunchParams } from "../types";
   import LogTerminal from "./LogTerminal.svelte";
@@ -19,13 +20,32 @@
 
   let selectedName = $state<string | null>(null);
   let isCreating = $state(false);
-  let showProxyLog = $state(false);   // 全局代理日志面板
+  let createStep = $state<"model" | "config">("model"); // 新建两步流程
+  let showProxyPanel = $state(false);   // 全局代理面板（配置 + 日志）
   let activeTab = $state<"config" | "logs">("config");
   let availableModels = $state<ModelInfo[]>([]);
   let scanning = $state(false);
   let saving = $state(false);
   let actionErr = $state("");
   let actionErrTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Proxy settings form
+  let proxyPort = $state(configStore.config.proxy_port ?? 8080);
+  let proxyCors = $state(configStore.config.proxy_cors ?? true);
+  let proxyAllowExternal = $state(configStore.config.proxy_allow_external ?? false);
+  let proxyApiKey = $state(configStore.config.proxy_api_key ?? "");
+  let proxyApplying = $state(false);
+  let proxyMsg = $state("");
+  let proxyMsgTimer: ReturnType<typeof setTimeout> | undefined;
+
+  $effect(() => {
+    if (configStore.loaded) {
+      proxyPort = configStore.config.proxy_port ?? 8080;
+      proxyCors = configStore.config.proxy_cors ?? true;
+      proxyAllowExternal = configStore.config.proxy_allow_external ?? false;
+      proxyApiKey = configStore.config.proxy_api_key ?? "";
+    }
+  });
 
   // Edit form
   let editName = $state("");
@@ -90,22 +110,31 @@
   function selectInstance(name: string) {
     selectedName = name;
     isCreating = false;
-    showProxyLog = false;
+    showProxyPanel = false;
     const cfg = savedInstances.find((i) => i.name === name);
     if (cfg) loadFormFrom(cfg);
   }
 
   function startCreate() {
     isCreating = true;
+    createStep = "model";
     selectedName = null;
-    showProxyLog = false;
+    showProxyPanel = false;
     editName = "";
     editModelPath = "";
     editMode = "server";
     editParams = defaultParams();
     activeTab = "config";
-    // Scan models if not yet done
     if (availableModels.length === 0) handleScan();
+  }
+
+  function pickModel(path: string) {
+    editModelPath = path;
+    // Auto-fill name from filename (strip extension)
+    if (!editName) {
+      editName = path.split(/[/\\]/).pop()?.replace(/\.gguf$/i, "") ?? "";
+    }
+    createStep = "config";
   }
 
   async function handleScan() {
@@ -222,6 +251,28 @@
       ts: e.timestamp,
     }))
   );
+
+  async function applyProxySettings() {
+    proxyApplying = true;
+    proxyMsg = "";
+    try {
+      await configStore.save({
+        ...configStore.config,
+        proxy_port: proxyPort,
+        proxy_cors: proxyCors,
+        proxy_allow_external: proxyAllowExternal,
+        proxy_api_key: proxyApiKey || null,
+      });
+      await restartProxy(proxyPort, proxyCors, proxyAllowExternal, proxyApiKey || null);
+      clearTimeout(proxyMsgTimer);
+      proxyMsg = "已应用 ✓";
+      proxyMsgTimer = setTimeout(() => { proxyMsg = ""; }, 2000);
+    } catch (e) {
+      proxyMsg = String(e);
+    } finally {
+      proxyApplying = false;
+    }
+  }
 </script>
 
 <div class="root">
@@ -264,15 +315,15 @@
       {/if}
     </div>
 
-    <!-- 左侧底部：全局代理日志入口 -->
+    <!-- 左侧底部：全局代理面板入口 -->
     <div class="panel-footer">
       <button
         class="proxy-log-btn"
-        class:active={showProxyLog}
-        onclick={() => { showProxyLog = !showProxyLog; selectedName = null; isCreating = false; }}
+        class:active={showProxyPanel}
+        onclick={() => { showProxyPanel = !showProxyPanel; selectedName = null; isCreating = false; }}
       >
         <span class="proxy-dot" class:has-logs={proxyStore.logs.length > 0}></span>
-        代理日志
+        代理
         {#if proxyStore.logs.length > 0}
           <span class="proxy-count">{proxyStore.logs.length}</span>
         {/if}
@@ -282,20 +333,95 @@
 
   <!-- ── Right: Config / Log panel ────────────────────────────────────────── -->
   <div class="panel-right">
-    {#if showProxyLog}
-      <!-- 全局代理日志 -->
-      <div class="log-area">
-        <div class="log-toolbar">
-          <span class="log-label">代理转发日志（全局）</span>
-          <button class="btn-ghost-sm" onclick={() => proxyStore.clearLogs()}>清空</button>
+    {#if showProxyPanel}
+      <!-- 全局代理面板：配置 + 日志 -->
+      <div class="proxy-panel">
+        <!-- 代理配置 -->
+        <div class="proxy-config-section">
+          <div class="proxy-section-title">代理配置</div>
+          <div class="proxy-fields">
+            <div class="proxy-field-row">
+              <label class="proxy-field-label" for="p-port">端口</label>
+              <input id="p-port" class="field-input w-num" type="number" min="1" max="65535" bind:value={proxyPort} />
+            </div>
+            <div class="proxy-field-row">
+              <label class="proxy-field-label" for="p-apikey">API Key</label>
+              <input id="p-apikey" class="field-input flex-1" type="password" bind:value={proxyApiKey} placeholder="可选，保护代理入口" />
+            </div>
+            <div class="proxy-field-row">
+              <span class="proxy-field-label">CORS</span>
+              <label class="toggle">
+                <input type="checkbox" bind:checked={proxyCors} />
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <div class="proxy-field-row">
+              <span class="proxy-field-label">局域网访问</span>
+              <label class="toggle">
+                <input type="checkbox" bind:checked={proxyAllowExternal} />
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+          </div>
+          <div class="proxy-apply-row">
+            <button class="action-btn btn-start" onclick={applyProxySettings} disabled={proxyApplying}>
+              {proxyApplying ? "应用中..." : "应用"}
+            </button>
+            {#if proxyMsg}
+              <span class="proxy-apply-msg" class:ok={proxyMsg.startsWith("已应用")}>{proxyMsg}</span>
+            {/if}
+          </div>
         </div>
-        <LogTerminal logs={proxyLogLines} />
+
+        <!-- 代理日志 -->
+        <div class="proxy-log-section">
+          <div class="log-toolbar">
+            <span class="log-label">代理日志</span>
+            <button class="btn-ghost-sm" onclick={() => proxyStore.clearLogs()}>清空</button>
+          </div>
+          <LogTerminal logs={proxyLogLines} />
+        </div>
       </div>
+
     {:else if !selectedName && !isCreating}
       <div class="empty-state">
         <div class="empty-icon">⬡</div>
         <div class="empty-msg">选择或创建一个实例</div>
       </div>
+
+    {:else if isCreating && createStep === "model"}
+      <!-- 新建第一步：选择模型 -->
+      <div class="model-pick-panel">
+        <div class="model-pick-header">
+          <span class="model-pick-title">选择模型文件</span>
+          <button class="btn-ghost" onclick={handleScan} disabled={scanning}>
+            {scanning ? "扫描中..." : "重新扫描"}
+          </button>
+          <button class="btn-ghost" onclick={() => { isCreating = false; }}>取消</button>
+        </div>
+        {#if scanning}
+          <div class="model-pick-loading">扫描中...</div>
+        {:else if availableModels.length === 0}
+          <div class="model-pick-empty">
+            未找到模型文件，请先在设置中配置模型目录
+          </div>
+        {:else}
+          <div class="model-pick-list">
+            {#each availableModels as m}
+              <button class="model-pick-item" onclick={() => pickModel(m.path)}>
+                <div class="model-pick-name">{m.name}</div>
+                <div class="model-pick-meta">
+                  <span class="model-pick-size">{m.size_display}</span>
+                  {#if m.quantization}
+                    <span class="model-pick-quant">{m.quantization}</span>
+                  {/if}
+                </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
     {:else}
       <!-- Tabs -->
       <div class="tabs">
@@ -314,6 +440,7 @@
           {/if}
           <button class="action-btn btn-delete" onclick={handleDelete} disabled={saving || isRunning}>删除</button>
         {:else}
+          <button class="action-btn btn-ghost-action" onclick={() => { createStep = "model"; }}>← 重选模型</button>
           <button class="action-btn btn-start" onclick={handleSaveAndStart} disabled={saving || !editName || !editModelPath}>
             {saving ? "保存中..." : "保存并启动"}
           </button>
@@ -338,24 +465,17 @@
           </div>
           <div class="field-hint">此名称将作为 Codex 请求中的 <code>model</code> 字段路由到此实例</div>
 
-          <!-- Model path -->
+          <!-- Model path (只读显示，新建时已在第一步选好) -->
           <div class="field-row">
             <label class="field-label" for="edit-model">模型文件</label>
             <div class="model-picker">
-              {#if availableModels.length > 0}
-                <select id="edit-model" class="field-select" bind:value={editModelPath}>
-                  <option value="">— 选择模型 —</option>
-                  {#each availableModels as m}
-                    <option value={m.path}>{m.name} ({m.size_display})</option>
-                  {/each}
-                </select>
-              {:else}
-                <input id="edit-model" class="field-input flex-1" type="text" bind:value={editModelPath}
-                  placeholder="/path/to/model.gguf" />
+              <input id="edit-model" class="field-input flex-1" type="text" bind:value={editModelPath}
+                placeholder="/path/to/model.gguf" readonly={isCreating} />
+              {#if !isCreating}
+                <button class="btn-ghost" onclick={handleScan} disabled={scanning}>
+                  {scanning ? "扫描中..." : "扫描"}
+                </button>
               {/if}
-              <button class="btn-ghost" onclick={handleScan} disabled={scanning}>
-                {scanning ? "扫描中..." : "扫描"}
-              </button>
             </div>
           </div>
 
@@ -978,6 +1098,162 @@
   font-family: monospace;
   color: var(--text-secondary);
 }
+
+/* ── Proxy panel ── */
+.proxy-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.proxy-config-section {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.proxy-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.proxy-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.proxy-field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+}
+
+.proxy-field-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  width: 80px;
+  flex-shrink: 0;
+}
+
+.proxy-apply-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.proxy-apply-msg {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.proxy-apply-msg.ok { color: var(--success); }
+
+.proxy-log-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Model pick panel ── */
+.model-pick-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.model-pick-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.model-pick-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-base);
+  flex: 1;
+}
+
+.model-pick-loading,
+.model-pick-empty {
+  padding: 24px 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.model-pick-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.model-pick-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, border-color 0.12s;
+}
+.model-pick-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-subtle);
+}
+
+.model-pick-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-base);
+  word-break: break-all;
+}
+
+.model-pick-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.model-pick-size {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.model-pick-quant {
+  font-size: 10px;
+  color: var(--accent);
+  background: rgba(59,130,246,0.1);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+.btn-ghost-action {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+.btn-ghost-action:hover { background: var(--bg-hover); }
 
 /* ── Log area ── */
 .log-area {

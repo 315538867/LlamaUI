@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getConfigStore } from "../stores/config.svelte";
-  import { detectLlama, validateLlamaPath, restartProxy } from "../services/tauri-bridge";
+  import { detectLlama, validateLlamaPath } from "../services/tauri-bridge";
   import { open } from "@tauri-apps/plugin-dialog";
   import type { LlamaInstall } from "../types";
 
@@ -14,15 +14,6 @@
   let copied = $state<string | null>(null);
   let saveErrorTimer: ReturnType<typeof setTimeout> | undefined;
 
-  // Proxy settings form state
-  let proxyPort = $state(8080);
-  let proxyCors = $state(true);
-  let proxyAllowExternal = $state(false);
-  let proxyApiKey = $state("");
-  let proxyApplying = $state(false);
-  let proxyMsg = $state("");
-  let proxyMsgTimer: ReturnType<typeof setTimeout> | undefined;
-
   function showSaveError(e: unknown) {
     clearTimeout(saveErrorTimer);
     saveError = String(e);
@@ -32,10 +23,6 @@
   $effect(() => {
     if (configStore.loaded) {
       llamaPath = configStore.config.llama_dir ?? "";
-      proxyPort = configStore.config.proxy_port ?? 8080;
-      proxyCors = configStore.config.proxy_cors ?? true;
-      proxyAllowExternal = configStore.config.proxy_allow_external ?? false;
-      proxyApiKey = configStore.config.proxy_api_key ?? "";
     }
   });
 
@@ -92,30 +79,6 @@
         model_dirs: configStore.config.model_dirs.filter((d) => d !== dir),
       });
     } catch (e) { showSaveError(e); }
-  }
-
-  async function applyProxySettings() {
-    proxyApplying = true;
-    proxyMsg = "";
-    try {
-      // Persist to config
-      await configStore.save({
-        ...configStore.config,
-        proxy_port: proxyPort,
-        proxy_cors: proxyCors,
-        proxy_allow_external: proxyAllowExternal,
-        proxy_api_key: proxyApiKey || null,
-      });
-      // Restart proxy with new settings
-      await restartProxy(proxyPort, proxyCors, proxyAllowExternal, proxyApiKey || null);
-      clearTimeout(proxyMsgTimer);
-      proxyMsg = "已应用 ✓";
-      proxyMsgTimer = setTimeout(() => { proxyMsg = ""; }, 2000);
-    } catch (e) {
-      proxyMsg = String(e);
-    } finally {
-      proxyApplying = false;
-    }
   }
 
   function copyText(text: string, key: string) {
@@ -206,39 +169,6 @@
           {/each}
         </div>
       {/if}
-    </div>
-
-    <!-- ─ 代理设置 ─ -->
-    <div class="section">
-      <div class="section-title">代理设置</div>
-      <div class="proxy-grid">
-        <div class="proxy-field">
-          <label class="proxy-label" for="proxy-port">端口</label>
-          <input id="proxy-port" class="input" type="number" min="1" max="65535" bind:value={proxyPort} style="width:80px;" />
-        </div>
-        <div class="proxy-field">
-          <label class="proxy-label" for="proxy-apikey">API Key</label>
-          <input id="proxy-apikey" class="input flex-1" type="password" bind:value={proxyApiKey} placeholder="可选，保护代理入口" />
-        </div>
-      </div>
-      <div class="proxy-toggles">
-        <label class="toggle-row">
-          <input type="checkbox" bind:checked={proxyCors} />
-          <span>允许跨域 (CORS)</span>
-        </label>
-        <label class="toggle-row">
-          <input type="checkbox" bind:checked={proxyAllowExternal} />
-          <span>允许局域网访问</span>
-        </label>
-      </div>
-      <div class="proxy-actions">
-        <button class="btn-primary" onclick={applyProxySettings} disabled={proxyApplying}>
-          {proxyApplying ? "应用中..." : "应用"}
-        </button>
-        {#if proxyMsg}
-          <span class="proxy-msg" class:ok={proxyMsg.startsWith("已应用")}>{proxyMsg}</span>
-        {/if}
-      </div>
     </div>
 
     <!-- ─ 客户端接入 ─ -->
@@ -438,24 +368,6 @@
   transition: color 0.12s;
 }
 .remove-btn:hover { color: var(--danger); }
-
-/* ─ Proxy settings ─ */
-.proxy-grid { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 8px; }
-.proxy-field { display: flex; align-items: center; gap: 6px; }
-.proxy-label { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
-.proxy-toggles { display: flex; gap: 16px; margin-bottom: 8px; }
-.toggle-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.toggle-row input { accent-color: var(--accent); }
-.proxy-actions { display: flex; align-items: center; gap: 10px; }
-.proxy-msg { font-size: 11px; color: var(--text-muted); }
-.proxy-msg.ok { color: var(--success); }
 
 /* ─ Client access ─ */
 .access-note {
