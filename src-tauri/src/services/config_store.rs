@@ -31,6 +31,8 @@ pub struct LaunchParams {
     pub no_mmap: Option<bool>,
     pub system_prompt: Option<String>,
     pub extra_args: Option<String>,
+    pub no_context_shift: Option<bool>,
+    pub keep: Option<i32>,
 }
 
 impl Default for LaunchParams {
@@ -52,6 +54,8 @@ impl Default for LaunchParams {
             no_mmap: None,
             system_prompt: None,
             extra_args: None,
+            no_context_shift: None,
+            keep: None,
         }
     }
 }

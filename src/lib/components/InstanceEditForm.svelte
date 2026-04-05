@@ -236,6 +236,27 @@
   </div>
 
   <div class="field-row">
+    <span class="field-label">禁用上下文移位</span>
+    <label class="toggle">
+      <input type="checkbox"
+        checked={editParams.no_context_shift ?? false}
+        onchange={(e) => setParam("no_context_shift", (e.target as HTMLInputElement).checked || null)}
+      />
+      <span class="toggle-track"></span>
+    </label>
+  </div>
+
+  <div class="field-row">
+    <label class="field-label" for="edit-keep">保留头部Token数</label>
+    <input id="edit-keep" class="field-input" type="number"
+      value={editParams.keep ?? ""}
+      oninput={(e) => numInput("keep", (e.target as HTMLInputElement).value)}
+      placeholder="-1=全部 0=不保留"
+      style="width:120px"
+    />
+  </div>
+
+  <div class="field-row">
     <label class="field-label" for="edit-extra">额外参数</label>
     <input id="edit-extra" class="field-input flex-1" type="text"
       value={editParams.extra_args ?? ""}

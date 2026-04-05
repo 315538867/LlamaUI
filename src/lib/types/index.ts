@@ -19,6 +19,8 @@ export interface LaunchParams {
   no_mmap: boolean | null;
   system_prompt: string | null;
   extra_args: string | null;
+  no_context_shift: boolean | null;
+  keep: number | null;
 }
 
 // ── Instance types ────────────────────────────────────────────────────────────

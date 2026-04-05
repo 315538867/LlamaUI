@@ -56,6 +56,8 @@
       no_mmap: null,
       system_prompt: null,
       extra_args: null,
+      no_context_shift: null,
+      keep: null,
     };
   }
 
@@ -402,6 +404,8 @@
                 seed: "随机种子",
                 mlock: "内存锁定",
                 no_mmap: "禁用内存映射",
+                no_context_shift: "禁用上下文移位",
+                keep: "保留头部Token数",
                 extra_args: "额外参数",
               }}
               {@const activeParams = Object.entries(displayParams).filter(([, v]) => v !== null && v !== false)}

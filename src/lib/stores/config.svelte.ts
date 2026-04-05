@@ -30,6 +30,8 @@ let config = $state<AppConfig>({
     no_mmap: null,
     system_prompt: null,
     extra_args: null,
+    no_context_shift: null,
+    keep: null,
   },
   last_preset: null,
   proxy_port: 8080,

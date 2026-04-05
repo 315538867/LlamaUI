@@ -180,6 +180,13 @@ impl InstanceRegistry {
             if p.no_mmap.unwrap_or(false) {
                 args.push("--no-mmap".into());
             }
+            if p.no_context_shift.unwrap_or(false) {
+                args.push("--no-context-shift".into());
+            }
+            if let Some(k) = p.keep {
+                args.push("--keep".into());
+                args.push(k.to_string());
+            }
             // Instance-level API key removed — proxy controls all access
         }
 
