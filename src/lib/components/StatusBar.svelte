@@ -35,54 +35,116 @@
   });
 </script>
 
-<footer
-  class="flex h-6 shrink-0 items-center justify-between border-t px-3"
-  style="background:var(--bg-surface); border-color:var(--border-subtle);"
->
-  <div class="flex items-center gap-2">
-    <!-- 状态指示点 -->
-    <span
-      class="inline-block h-1.5 w-1.5 rounded-full"
-      style="background:{statusColor}; box-shadow: 0 0 4px {statusColor};"
-    ></span>
-    <span class="text-[11px]" style="color:var(--text-secondary);">{statusText}</span>
+<footer class="statusbar">
+  <!-- 左侧：状态 + 模型 -->
+  <div class="left">
+    <span class="status-dot" style="background:{statusColor}; box-shadow:0 0 5px {statusColor};"></span>
+    <span class="status-text">{statusText}</span>
 
     {#if process.info.model}
-      <span class="text-[11px]" style="color:var(--border);">·</span>
-      <span class="max-w-52 truncate text-[11px]" style="color:var(--text-muted);">
+      <span class="sep">|</span>
+      <span class="model-name">
         {process.info.model.split(/[/\\]/).pop()}
       </span>
     {/if}
   </div>
 
-  <div class="flex items-center gap-3">
+  <!-- 右侧：性能指标 -->
+  <div class="right">
     {#if process.tokensPerSec != null}
-      <span class="tps-badge">
-        ⚡ {process.tokensPerSec.toFixed(1)} t/s
-      </span>
+      <span class="tps">⚡ {process.tokensPerSec.toFixed(1)} t/s</span>
     {/if}
     {#if process.promptTps != null && process.tokensPerSec != null}
-      <span class="text-[11px]" style="color:var(--text-muted);" title="Prefill 速度">
-        ↑ {process.promptTps.toFixed(0)} t/s
-      </span>
+      <span class="sep">|</span>
+      <span class="stat" title="Prefill 速度">↑ {process.promptTps.toFixed(0)} t/s</span>
     {/if}
     {#if process.info.port}
-      <span class="text-[11px]" style="color:var(--text-muted);">:{process.info.port}</span>
+      <span class="sep">|</span>
+      <span class="stat">:{process.info.port}</span>
     {/if}
     {#if uptime}
-      <span class="text-[11px]" style="color:var(--text-muted);">{uptime}</span>
+      <span class="sep">|</span>
+      <span class="stat">{uptime}</span>
     {/if}
     {#if process.info.pid}
-      <span class="text-[11px]" style="color:var(--text-muted);">PID {process.info.pid}</span>
+      <span class="sep">|</span>
+      <span class="stat">PID {process.info.pid}</span>
     {/if}
   </div>
 </footer>
 
 <style>
-.tps-badge {
+.statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 26px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-subtle);
+  user-select: none;
+}
+
+/* ─ Left ─ */
+.left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.model-name {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* ─ Right ─ */
+.right {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.stat {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tps {
   font-size: 11px;
   font-weight: 600;
   color: var(--success);
-  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─ Separator ─ */
+.sep {
+  font-size: 10px;
+  color: var(--border);
+  line-height: 1;
+  flex-shrink: 0;
 }
 </style>

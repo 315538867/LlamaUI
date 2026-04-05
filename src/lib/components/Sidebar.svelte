@@ -15,9 +15,9 @@
   ];
 </script>
 
-<nav class="sidebar flex h-full w-44 shrink-0 flex-col py-3">
+<nav class="sidebar flex h-full w-44 shrink-0 flex-col">
   <!-- Logo -->
-  <div class="logo-area mb-4 px-3">
+  <div class="logo-area">
     <div class="logo-badge">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 2L2 7l10 5 10-5-10-5z"/>
@@ -32,20 +32,17 @@
   </div>
 
   <!-- Divider -->
-  <div class="mx-3 mb-3 h-px" style="background:var(--border-subtle);"></div>
-
-  <!-- Section label -->
-  <p class="mb-1.5 px-4 text-[10px] font-semibold uppercase tracking-widest" style="color:var(--text-muted); letter-spacing:.08em;">菜单</p>
+  <div class="divider"></div>
 
   <!-- Nav -->
-  <div class="flex flex-1 flex-col gap-0.5 px-2">
+  <div class="nav-list">
     {#each navItems as item}
       <button
         onclick={() => onNavigate(item.id)}
-        class="nav-item flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left"
+        class="nav-item"
         class:active={activePage === item.id}
       >
-        <span class="nav-icon flex h-5 w-5 shrink-0 items-center justify-center">
+        <span class="nav-icon">
           {#if item.id === "launcher"}
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/>
@@ -66,15 +63,15 @@
             </svg>
           {/if}
         </span>
-        <span class="nav-label text-xs font-medium">{item.label}</span>
+        <span class="nav-label">{item.label}</span>
       </button>
     {/each}
   </div>
 
   <!-- Footer -->
-  <div class="px-3 pt-3">
-    <div class="h-px mb-3" style="background:var(--border-subtle);"></div>
-    <p class="text-[10px]" style="color:var(--text-muted);">v0.1.0</p>
+  <div class="footer">
+    <div class="divider"></div>
+    <span class="version">v0.1.0</span>
   </div>
 </nav>
 
@@ -82,13 +79,15 @@
   .sidebar {
     background: var(--bg-surface);
     border-right: 1px solid var(--border-subtle);
+    padding: 14px 0 12px;
   }
 
-  /* Logo */
+  /* ─ Logo ─ */
   .logo-area {
     display: flex;
     align-items: center;
     gap: 10px;
+    padding: 0 14px 14px;
   }
   .logo-badge {
     flex-shrink: 0;
@@ -119,12 +118,38 @@
     line-height: 1.2;
   }
 
-  /* Nav items */
+  /* ─ Divider ─ */
+  .divider {
+    height: 1px;
+    margin: 0 12px;
+    background: var(--border-subtle);
+  }
+
+  /* ─ Nav ─ */
+  .nav-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 8px 0;
+  }
+
   .nav-item {
     position: relative;
-    color: var(--text-secondary);
-    transition: background 0.15s, color 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 7px;
     border: 1px solid transparent;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: none;
+    cursor: pointer;
+    transition: background 0.13s, color 0.13s, border-color 0.13s;
   }
   .nav-item:hover {
     background: var(--bg-hover);
@@ -140,8 +165,8 @@
     content: "";
     position: absolute;
     left: -1px;
-    top: 20%;
-    height: 60%;
+    top: 22%;
+    height: 56%;
     width: 3px;
     border-radius: 0 3px 3px 0;
     background: #3b82f6;
@@ -150,13 +175,38 @@
     background: rgba(59, 130, 246, 0.14);
   }
 
-  /* Icon color inheritance */
+  /* ─ Icon ─ */
   .nav-icon {
-    opacity: 0.75;
-    transition: opacity 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    opacity: 0.7;
+    transition: opacity 0.13s;
   }
   .nav-item:hover .nav-icon,
   .nav-item.active .nav-icon {
     opacity: 1;
+  }
+
+  /* ─ Label ─ */
+  .nav-label {
+    line-height: 1;
+  }
+
+  /* ─ Footer ─ */
+  .footer {
+    padding-top: 10px;
+  }
+  .footer .divider {
+    margin-bottom: 10px;
+  }
+  .version {
+    display: block;
+    padding: 0 14px;
+    font-size: 10px;
+    color: var(--text-muted);
   }
 </style>
