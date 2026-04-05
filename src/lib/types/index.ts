@@ -17,7 +17,6 @@ export interface LaunchParams {
   seed: number | null;
   mlock: boolean | null;
   no_mmap: boolean | null;
-  api_key: string | null;
   system_prompt: string | null;
   extra_args: string | null;
 }

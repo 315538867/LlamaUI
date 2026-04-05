@@ -180,13 +180,7 @@ impl InstanceRegistry {
             if p.no_mmap.unwrap_or(false) {
                 args.push("--no-mmap".into());
             }
-            // Instance-level API key (protects direct llama.cpp access)
-            if let Some(ref key) = p.api_key {
-                if !key.is_empty() {
-                    args.push("--api-key".into());
-                    args.push(key.clone());
-                }
-            }
+            // Instance-level API key removed — proxy controls all access
         }
 
         // System prompt → temp file

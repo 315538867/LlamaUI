@@ -29,7 +29,6 @@ pub struct LaunchParams {
     pub seed: Option<i64>,
     pub mlock: Option<bool>,
     pub no_mmap: Option<bool>,
-    pub api_key: Option<String>,       // passed to llama.cpp --api-key
     pub system_prompt: Option<String>,
     pub extra_args: Option<String>,
 }
@@ -51,7 +50,6 @@ impl Default for LaunchParams {
             seed: None,
             mlock: None,
             no_mmap: None,
-            api_key: None,
             system_prompt: None,
             extra_args: None,
         }
@@ -99,7 +97,6 @@ pub struct LaunchConfig {
     pub seed: Option<i64>,
     pub mlock: Option<bool>,
     pub no_mmap: Option<bool>,
-    pub api_key: Option<String>,
     pub system_prompt: Option<String>,
     pub prompt: Option<String>,
     pub predict: Option<u32>,

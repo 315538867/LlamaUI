@@ -69,7 +69,6 @@
       seed: null,
       mlock: null,
       no_mmap: null,
-      api_key: null,
       system_prompt: null,
       extra_args: null,
     };
@@ -659,16 +658,6 @@
               />
               <span class="toggle-track"></span>
             </label>
-          </div>
-
-          <!-- Instance API key -->
-          <div class="field-row">
-            <label class="field-label" for="edit-apikey">实例 API Key</label>
-            <input id="edit-apikey" class="field-input flex-1" type="password"
-              value={editParams.api_key ?? ""}
-              oninput={(e) => { editParams.api_key = (e.target as HTMLInputElement).value || null; }}
-              placeholder="可选，传入 --api-key"
-            />
           </div>
 
           <!-- Extra args -->
