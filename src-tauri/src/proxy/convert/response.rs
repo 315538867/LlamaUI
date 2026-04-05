@@ -6,6 +6,7 @@ pub struct SseConverter {
     response_id: String,
     state: State,
     output_index: u32,
+    text_buf: String,
 }
 
 enum State {
@@ -20,6 +21,7 @@ impl SseConverter {
             response_id: format!("resp_{}", Uuid::new_v4().simple()),
             state: State::Idle,
             output_index: 0,
+            text_buf: String::new(),
         }
     }
 
@@ -74,7 +76,18 @@ impl SseConverter {
         match block_type {
             "text" => {
                 self.state = State::InText { index };
-                vec![]
+                self.text_buf.clear();
+                let data = json!({
+                    "type": "response.output_item.added",
+                    "output_index": index,
+                    "item": {
+                        "type": "message",
+                        "id": format!("msg_{}", index),
+                        "role": "assistant",
+                        "content": []
+                    }
+                });
+                vec![format!("event: response.output_item.added\ndata: {}\n\n", data)]
             }
             "tool_use" => {
                 let id = block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -110,6 +123,7 @@ impl SseConverter {
             "text_delta" => {
                 let text = delta.get("text").and_then(|v| v.as_str()).unwrap_or("");
                 let index = if let State::InText { index } = &self.state { *index } else { 0 };
+                self.text_buf.push_str(text);
                 let data = json!({
                     "type": "response.output_text.delta",
                     "output_index": index,
@@ -130,9 +144,34 @@ impl SseConverter {
     }
 
     fn handle_block_stop(&mut self, _event: &Value) -> Vec<String> {
-        // 用 replace 避免借用冲突
         let prev = std::mem::replace(&mut self.state, State::Idle);
         match prev {
+            State::InText { index } => {
+                let full_text = std::mem::take(&mut self.text_buf);
+                let done_text = json!({
+                    "type": "response.output_text.done",
+                    "output_index": index,
+                    "content_index": 0,
+                    "text": &full_text
+                });
+                let done_item = json!({
+                    "type": "response.output_item.done",
+                    "output_index": index,
+                    "item": {
+                        "type": "message",
+                        "id": format!("msg_{}", index),
+                        "role": "assistant",
+                        "content": [{
+                            "type": "output_text",
+                            "text": &full_text
+                        }]
+                    }
+                });
+                vec![
+                    format!("event: response.output_text.done\ndata: {}\n\n", done_text),
+                    format!("event: response.output_item.done\ndata: {}\n\n", done_item),
+                ]
+            }
             State::InToolCall { index, id, name, args_buf } => {
                 let data = json!({
                     "type": "response.output_item.done",
