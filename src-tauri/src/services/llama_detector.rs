@@ -11,62 +11,107 @@ pub struct LlamaInstall {
 
 /// Search common locations for llama.cpp binaries
 pub fn detect_installations() -> Vec<LlamaInstall> {
-    let mut installs = Vec::new();
+    let mut installs: Vec<LlamaInstall> = Vec::new();
+
+    let mut try_add = |dir: &str| {
+        let dir = dir.trim().trim_matches('"');
+        if dir.is_empty() {
+            return;
+        }
+        if let Some(install) = check_directory(dir) {
+            if !installs.iter().any(|i| i.path == install.path) {
+                installs.push(install);
+            }
+        }
+    };
 
     // Check PATH first
     if let Ok(path_var) = std::env::var("PATH") {
         let separator = if cfg!(windows) { ';' } else { ':' };
         for dir in path_var.split(separator) {
-            if let Some(install) = check_directory(dir) {
-                if !installs.iter().any(|i: &LlamaInstall| i.path == install.path) {
-                    installs.push(install);
-                }
-            }
+            try_add(dir);
         }
     }
 
-    // Check common Windows locations
-    if cfg!(windows) {
-        let common_paths = [
+    #[cfg(windows)]
+    {
+        // Common fixed locations
+        let fixed: &[&str] = &[
             r"C:\llama.cpp",
+            r"C:\llama.cpp\build\bin\Release",
+            r"C:\llama.cpp\build\Release",
+            r"C:\llama.cpp\bin",
             r"C:\Program Files\llama.cpp",
-            r"C:\Program Files (x86)\llama.cpp",
+            r"C:\Program Files\llama.cpp\bin",
+            r"C:\ai\llama.cpp",
+            r"C:\ai\llama.cpp\bin",
+            r"D:\llama.cpp",
+            r"D:\llama.cpp\bin",
+            r"D:\ai\llama.cpp",
         ];
-        // Also check user home
+        for p in fixed {
+            try_add(p);
+        }
+
+        // User-relative locations
+        for var in &["USERPROFILE", "HOMEPATH"] {
+            if let Ok(home) = std::env::var(var) {
+                let candidates = [
+                    format!(r"{}\llama.cpp", home),
+                    format!(r"{}\llama.cpp\build\bin\Release", home),
+                    format!(r"{}\llama.cpp\bin", home),
+                    format!(r"{}\AppData\Local\llama.cpp", home),
+                    format!(r"{}\AppData\Local\llama.cpp\bin", home),
+                    // Common pattern: extracted GitHub release zip
+                    format!(r"{}\Downloads\llama.cpp", home),
+                    format!(r"{}\Downloads\llama.cpp\bin", home),
+                ];
+                for p in &candidates {
+                    try_add(p);
+                }
+            }
+        }
+
+        // Also scan Downloads for release zips (llama-bNNNN-bin-win-*)
         if let Ok(home) = std::env::var("USERPROFILE") {
-            let home_paths = [
-                format!("{}\\.llama.cpp", home),
-                format!("{}\\llama.cpp", home),
-                format!("{}\\AppData\\Local\\llama.cpp", home),
-            ];
-            for p in home_paths {
-                if let Some(install) = check_directory(&p) {
-                    if !installs.iter().any(|i| i.path == install.path) {
-                        installs.push(install);
+            let downloads = std::path::Path::new(&home).join("Downloads");
+            if let Ok(entries) = std::fs::read_dir(&downloads) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_lowercase();
+                    if name.starts_with("llama") && entry.path().is_dir() {
+                        try_add(&entry.path().to_string_lossy());
+                        try_add(&entry.path().join("bin").to_string_lossy().into_owned());
                     }
                 }
             }
         }
-        for p in common_paths {
-            if let Some(install) = check_directory(p) {
-                if !installs.iter().any(|i| i.path == install.path) {
-                    installs.push(install);
-                }
-            }
-        }
     }
 
-    // macOS / Linux common paths
-    if cfg!(not(windows)) {
-        let common_paths = [
+    #[cfg(not(windows))]
+    {
+        let fixed: &[&str] = &[
+            "/usr/bin",
             "/usr/local/bin",
             "/opt/homebrew/bin",
+            "/opt/local/bin",
         ];
-        for p in common_paths {
-            if let Some(install) = check_directory(p) {
-                if !installs.iter().any(|i| i.path == install.path) {
-                    installs.push(install);
-                }
+        for p in fixed {
+            try_add(p);
+        }
+
+        // User home relative
+        if let Ok(home) = std::env::var("HOME") {
+            let candidates = [
+                format!("{}/llama.cpp/build/bin", home),
+                format!("{}/llama.cpp/build/Release", home),
+                format!("{}/llama.cpp/bin", home),
+                format!("{}/llama.cpp", home),
+                format!("{}/.local/bin", home),
+                format!("{}/Downloads/llama.cpp/build/bin", home),
+                format!("{}/Downloads/llama.cpp", home),
+            ];
+            for p in &candidates {
+                try_add(p);
             }
         }
     }
@@ -91,7 +136,7 @@ fn check_directory(dir: &str) -> Option<LlamaInstall> {
     }
 
     Some(LlamaInstall {
-        path: dir.to_string(),
+        path: dir_path.to_string_lossy().into_owned(),
         version: None,
         has_server,
         has_cli,
