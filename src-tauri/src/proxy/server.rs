@@ -1,8 +1,9 @@
 use axum::{routing::post, Router};
 use reqwest::Client;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
-use tauri::async_runtime::JoinHandle;
+use tauri::{AppHandle, async_runtime::JoinHandle};
 use tower_http::cors::{Any, CorsLayer};
 
 use super::handler::{handle_passthrough, handle_responses};
@@ -10,36 +11,41 @@ use super::handler::{handle_passthrough, handle_responses};
 #[derive(Clone)]
 pub struct ProxyConfig {
     pub port: u16,
-    pub target: Arc<RwLock<String>>,
+    /// instance_name → llama.cpp port
+    pub routes: Arc<RwLock<HashMap<String, u16>>>,
+    /// proxy-level API key (validates incoming Codex requests)
+    pub api_key: Arc<RwLock<Option<String>>>,
     pub client: Arc<Client>,
     pub cors: bool,
     pub allow_external: bool,
+    pub app_handle: AppHandle,
 }
 
 impl ProxyConfig {
-    pub fn new(port: u16, target: String, cors: bool, allow_external: bool) -> Self {
+    pub fn new(
+        port: u16,
+        cors: bool,
+        allow_external: bool,
+        api_key: Option<String>,
+        app_handle: AppHandle,
+    ) -> Self {
         Self {
             port,
-            target: Arc::new(RwLock::new(target)),
+            routes: Arc::new(RwLock::new(HashMap::new())),
+            api_key: Arc::new(RwLock::new(api_key)),
             client: Arc::new(Client::new()),
             cors,
             allow_external,
+            app_handle,
         }
     }
 }
 
-/// 启动代理服务器，返回 JoinHandle（用于 Tauri 命令控制）
+/// 启动代理服务器，返回 JoinHandle（用于控制生命周期）
 pub fn start(config: ProxyConfig) -> JoinHandle<()> {
     tauri::async_runtime::spawn(async move {
         run_server(config).await;
     })
-}
-
-/// CLI 阻塞入口（默认开启 CORS，仅本地）
-pub fn run_proxy_server(port: u16, target: &str) {
-    let config = ProxyConfig::new(port, target.to_string(), true, false);
-    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
-    rt.block_on(run_server(config));
 }
 
 async fn run_server(config: ProxyConfig) {
@@ -68,7 +74,7 @@ async fn run_server(config: ProxyConfig) {
             return;
         }
     };
-    eprintln!("[proxy] listening on http://{} → {}", addr, config.target.read().unwrap());
+    eprintln!("[proxy] listening on http://{}", addr);
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("[proxy] server error: {}", e);
     }

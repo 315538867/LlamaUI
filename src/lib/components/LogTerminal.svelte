@@ -1,16 +1,24 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import { getProcessStore } from "../stores/process.svelte";
 
-  const process = getProcessStore();
+  interface LogEntry {
+    stream: string;
+    line: string;
+    ts?: number;
+  }
+
+  interface Props {
+    logs: LogEntry[];
+  }
+
+  let { logs }: Props = $props();
 
   let logContainer: HTMLDivElement;
   let autoScroll = $state(true);
   let rafId: number | undefined;
 
   $effect(() => {
-    // Access logs.length to subscribe to updates
-    if (autoScroll && logContainer && process.logs.length > 0) {
+    if (autoScroll && logContainer && logs.length > 0) {
       if (rafId !== undefined) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         logContainer.scrollTop = logContainer.scrollHeight;
@@ -27,44 +35,50 @@
   });
 </script>
 
-<div class="terminal flex h-full flex-col overflow-hidden rounded-lg border">
-  <!-- 工具栏 -->
-  <div class="toolbar flex shrink-0 items-center justify-between border-b px-3 py-1.5">
-    <div class="flex items-center gap-2">
-      <span class="text-[11px] font-medium" style="color:var(--text-secondary);">日志输出</span>
-      {#if process.logs.length > 0}
-        <span class="count rounded px-1.5 py-0.5 text-[10px]">{process.logs.length}</span>
-      {/if}
-    </div>
-    <div class="flex items-center gap-3">
-      <label class="flex cursor-pointer items-center gap-1.5 text-[11px]" style="color:var(--text-muted);">
-        <input type="checkbox" bind:checked={autoScroll} class="h-3 w-3 accent-blue-500" />
-        自动滚动
-      </label>
-      <button class="clear-btn rounded px-2 py-0.5 text-[11px]" onclick={() => process.clearLogs()}>
-        清除
-      </button>
-    </div>
-  </div>
-
-  <!-- 日志内容 -->
-  <div bind:this={logContainer} class="flex-1 overflow-y-auto p-3 font-mono text-[11px] leading-5">
-    {#if process.logs.length === 0}
-      <p style="color:var(--text-muted);">等待启动...</p>
+<div class="terminal">
+  <div bind:this={logContainer} class="log-scroll">
+    {#if logs.length === 0}
+      <p class="empty">等待输出...</p>
     {:else}
-      {#each process.logs as log}
-        <div style={log.stream === "stderr" ? "color:var(--warning);" : "color:#6b7280;"}>
-          {log.line}
-        </div>
+      {#each logs as log}
+        <div class="log-line" class:stderr={log.stream === "stderr"}>{log.line}</div>
       {/each}
     {/if}
   </div>
 </div>
 
 <style>
-  .terminal { background: #0d0d0f; border-color: var(--border-subtle); }
-  .toolbar { border-color: var(--border-subtle); background: var(--bg-surface); }
-  .count { background: var(--bg-overlay); color: var(--text-muted); }
-  .clear-btn { color: var(--text-muted); transition: color 0.15s; }
-  .clear-btn:hover { color: var(--text-base); }
+.terminal {
+  background: #0d0d0f;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.log-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.log-line {
+  color: #6b7280;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.log-line.stderr {
+  color: var(--warning);
+}
+
+.empty {
+  color: var(--text-muted);
+  font-size: 11px;
+}
 </style>

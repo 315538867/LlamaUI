@@ -3,19 +3,20 @@
   import "./app.css";
   import Sidebar from "./lib/components/Sidebar.svelte";
   import StatusBar from "./lib/components/StatusBar.svelte";
-  import Launcher from "./lib/components/Launcher.svelte";
+  import ModelLibrary from "./lib/components/ModelLibrary.svelte";
   import ModelBrowser from "./lib/components/ModelBrowser.svelte";
   import ConfigEditor from "./lib/components/ConfigEditor.svelte";
   import { getConfigStore } from "./lib/stores/config.svelte";
-  import { getProcessStore } from "./lib/stores/process.svelte";
+  import { getInstanceStore } from "./lib/stores/process.svelte";
   import type { PageId } from "./lib/types";
 
   const configStore = getConfigStore();
+  const instanceStore = getInstanceStore();
 
-  let activePage = $state<PageId>("launcher");
+  let activePage = $state<PageId>("instances");
 
   onMount(() => { configStore.load(); });
-  onDestroy(() => { getProcessStore().destroy(); });
+  onDestroy(() => { instanceStore.destroy(); });
 </script>
 
 <div class="flex h-full w-full flex-col" style="background:var(--bg-base);">
@@ -23,8 +24,8 @@
     <Sidebar {activePage} onNavigate={(page) => (activePage = page)} />
 
     <main class="min-h-0 flex-1 overflow-hidden">
-      {#if activePage === "launcher"}
-        <Launcher />
+      {#if activePage === "instances"}
+        <ModelLibrary />
       {:else if activePage === "models"}
         <ModelBrowser />
       {:else if activePage === "settings"}

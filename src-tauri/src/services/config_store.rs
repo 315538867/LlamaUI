@@ -1,38 +1,17 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use super::process_manager::LaunchMode;
+// ── Enums ─────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppConfig {
-    pub llama_dir: Option<String>,
-    pub model_dirs: Vec<String>,
-    pub default_params: LaunchParams,
-    pub last_preset: Option<String>,
-    #[serde(default = "default_proxy_port")]
-    pub proxy_port: u16,
-    #[serde(default = "default_true")]
-    pub proxy_cors: bool,
-    #[serde(default)]
-    pub proxy_allow_external: bool,
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum LaunchMode {
+    Server,
+    Cli,
 }
 
-fn default_proxy_port() -> u16 { 8080 }
-fn default_true() -> bool { true }
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            llama_dir: None,
-            model_dirs: Vec::new(),
-            default_params: LaunchParams::default(),
-            last_preset: None,
-            proxy_port: 8080,
-            proxy_cors: true,
-            proxy_allow_external: false,
-        }
-    }
-}
+// ── Launch params (per-instance configuration) ───────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LaunchParams {
@@ -50,7 +29,7 @@ pub struct LaunchParams {
     pub seed: Option<i64>,
     pub mlock: Option<bool>,
     pub no_mmap: Option<bool>,
-    pub api_key: Option<String>,
+    pub api_key: Option<String>,       // passed to llama.cpp --api-key
     pub system_prompt: Option<String>,
     pub extra_args: Option<String>,
 }
@@ -79,6 +58,29 @@ impl Default for LaunchParams {
     }
 }
 
+// ── Instance config (named deployment unit) ──────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstanceConfig {
+    pub name: String,          // routing key (= body.model in Codex requests)
+    pub model_path: String,
+    pub mode: LaunchMode,
+    pub params: LaunchParams,
+}
+
+impl InstanceConfig {
+    pub fn new(name: String, model_path: String) -> Self {
+        Self {
+            name,
+            model_path,
+            mode: LaunchMode::Server,
+            params: LaunchParams::default(),
+        }
+    }
+}
+
+// ── Legacy LaunchConfig (kept for backward compat, used in process commands) ─
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LaunchConfig {
     pub model_path: String,
@@ -86,8 +88,6 @@ pub struct LaunchConfig {
     pub gpu_layers: Option<i32>,
     pub ctx_size: Option<u32>,
     pub threads: Option<u32>,
-    pub port: Option<u16>,
-    pub host: Option<String>,
     pub flash_attn: Option<bool>,
     pub cont_batching: Option<bool>,
     pub batch_size: Option<u32>,
@@ -106,12 +106,62 @@ pub struct LaunchConfig {
     pub extra_args: Option<String>,
 }
 
+// ── Preset ────────────────────────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Preset {
     pub name: String,
     pub params: LaunchParams,
     pub mode: LaunchMode,
 }
+
+// ── AppConfig ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppConfig {
+    pub llama_dir: Option<String>,
+    pub model_dirs: Vec<String>,
+    /// Saved instance configurations (user-created named deployments)
+    #[serde(default)]
+    pub instances: Vec<InstanceConfig>,
+    /// Per-model-file presets: key = model filename (not full path)
+    #[serde(default)]
+    pub model_presets: HashMap<String, Vec<Preset>>,
+    /// Legacy global defaults (kept for migration)
+    pub default_params: LaunchParams,
+    pub last_preset: Option<String>,
+    #[serde(default = "default_proxy_port")]
+    pub proxy_port: u16,
+    #[serde(default = "default_true")]
+    pub proxy_cors: bool,
+    #[serde(default)]
+    pub proxy_allow_external: bool,
+    /// Proxy-level API key (validates incoming Codex requests)
+    #[serde(default)]
+    pub proxy_api_key: Option<String>,
+}
+
+fn default_proxy_port() -> u16 { 8080 }
+fn default_true() -> bool { true }
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            llama_dir: None,
+            model_dirs: Vec::new(),
+            instances: Vec::new(),
+            model_presets: HashMap::new(),
+            default_params: LaunchParams::default(),
+            last_preset: None,
+            proxy_port: 8080,
+            proxy_cors: true,
+            proxy_allow_external: false,
+            proxy_api_key: None,
+        }
+    }
+}
+
+// ── ConfigStore ───────────────────────────────────────────────────────────────
 
 pub struct ConfigStore {
     config_path: PathBuf,
@@ -131,13 +181,9 @@ impl ConfigStore {
     }
 
     pub fn load_config(&self) -> AppConfig {
-        // Cache hit — avoid disk read
         if let Ok(guard) = self.cache.lock() {
-            if let Some(ref cfg) = *guard {
-                return cfg.clone();
-            }
+            if let Some(ref cfg) = *guard { return cfg.clone(); }
         }
-        // Cache miss — read from disk
         let config = if self.config_path.exists() {
             std::fs::read_to_string(&self.config_path)
                 .ok()
@@ -146,9 +192,7 @@ impl ConfigStore {
         } else {
             AppConfig::default()
         };
-        if let Ok(mut guard) = self.cache.lock() {
-            *guard = Some(config.clone());
-        }
+        if let Ok(mut guard) = self.cache.lock() { *guard = Some(config.clone()); }
         config
     }
 
@@ -156,18 +200,66 @@ impl ConfigStore {
         let json = serde_json::to_string_pretty(config)
             .map_err(|e| format!("序列化失败: {}", e))?;
         atomic_write(&self.config_path, &json)?;
-        // Update cache on successful save
-        if let Ok(mut guard) = self.cache.lock() {
-            *guard = Some(config.clone());
-        }
+        if let Ok(mut guard) = self.cache.lock() { *guard = Some(config.clone()); }
         Ok(())
     }
 
+    // ── Instance config persistence ───────────────────────────────────────────
+
+    pub fn save_instance_config(&self, instance: InstanceConfig) -> Result<(), String> {
+        let mut cfg = self.load_config();
+        if let Some(existing) = cfg.instances.iter_mut().find(|i| i.name == instance.name) {
+            *existing = instance;
+        } else {
+            cfg.instances.push(instance);
+        }
+        self.save_config(&cfg)
+    }
+
+    pub fn delete_instance_config(&self, name: &str) -> Result<(), String> {
+        let mut cfg = self.load_config();
+        cfg.instances.retain(|i| i.name != name);
+        self.save_config(&cfg)
+    }
+
+    // ── Per-model presets ─────────────────────────────────────────────────────
+
+    pub fn list_model_presets(&self, model_filename: &str) -> Vec<Preset> {
+        self.load_config()
+            .model_presets
+            .get(model_filename)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn save_model_preset(&self, model_filename: &str, preset: Preset) -> Result<(), String> {
+        let mut cfg = self.load_config();
+        let presets = cfg.model_presets.entry(model_filename.to_string()).or_default();
+        if let Some(existing) = presets.iter_mut().find(|p| p.name == preset.name) {
+            *existing = preset;
+        } else {
+            presets.push(preset);
+        }
+        self.save_config(&cfg)
+    }
+
+    pub fn delete_model_preset(&self, model_filename: &str, name: &str) -> Result<(), String> {
+        let mut cfg = self.load_config();
+        if let Some(presets) = cfg.model_presets.get_mut(model_filename) {
+            let before = presets.len();
+            presets.retain(|p| p.name != name);
+            if presets.len() == before {
+                return Err(format!("预设不存在: {}", name));
+            }
+        }
+        self.save_config(&cfg)
+    }
+
+    // ── Legacy global presets (kept for migration) ────────────────────────────
+
     pub fn list_presets(&self) -> Vec<Preset> {
         if let Ok(guard) = self.presets_cache.lock() {
-            if let Some(ref presets) = *guard {
-                return presets.clone();
-            }
+            if let Some(ref presets) = *guard { return presets.clone(); }
         }
         let presets = if self.presets_path.exists() {
             std::fs::read_to_string(&self.presets_path)
@@ -177,9 +269,7 @@ impl ConfigStore {
         } else {
             Vec::new()
         };
-        if let Ok(mut guard) = self.presets_cache.lock() {
-            *guard = Some(presets.clone());
-        }
+        if let Ok(mut guard) = self.presets_cache.lock() { *guard = Some(presets.clone()); }
         presets
     }
 
@@ -202,9 +292,9 @@ impl ConfigStore {
 
     pub fn delete_preset(&self, name: &str) -> Result<(), String> {
         let mut presets = self.list_presets();
-        let len_before = presets.len();
+        let before = presets.len();
         presets.retain(|p| p.name != name);
-        if presets.len() == len_before {
+        if presets.len() == before {
             return Err(format!("预设不存在: {}", name));
         }
         self.write_presets(&presets)
@@ -214,21 +304,18 @@ impl ConfigStore {
         let json = serde_json::to_string_pretty(presets)
             .map_err(|e| format!("序列化失败: {}", e))?;
         atomic_write(&self.presets_path, &json)?;
-        if let Ok(mut guard) = self.presets_cache.lock() {
-            *guard = Some(presets.to_vec());
-        }
+        if let Ok(mut guard) = self.presets_cache.lock() { *guard = Some(presets.to_vec()); }
         Ok(())
     }
 }
 
-/// Write to a temp file then rename for crash safety.
-/// Falls back to direct write if rename fails (e.g. cross-device on Windows).
+// ── Atomic write ──────────────────────────────────────────────────────────────
+
 fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
     let tmp_path = path.with_extension("tmp");
     std::fs::write(&tmp_path, content)
         .map_err(|e| format!("写入临时文件失败: {}", e))?;
     if std::fs::rename(&tmp_path, path).is_err() {
-        // Fallback: direct write (less crash-safe but avoids cross-device rename failure)
         std::fs::write(path, content)
             .map_err(|e| format!("写入配置文件失败: {}", e))?;
         let _ = std::fs::remove_file(&tmp_path);

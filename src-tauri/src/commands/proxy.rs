@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 use serde_json::{json, Value};
-use tauri::State;
+use tauri::{AppHandle, State};
 use tauri::async_runtime::JoinHandle;
 
 use crate::proxy::server::{start, ProxyConfig};
@@ -8,6 +8,7 @@ use crate::services::config_store::ConfigStore;
 
 pub struct ProxyState {
     handle: Mutex<Option<JoinHandle<()>>>,
+    /// Shared config — routes table updated in-place without restarting server
     config: Mutex<Option<ProxyConfig>>,
 }
 
@@ -19,20 +20,44 @@ impl ProxyState {
         }
     }
 
-    /// llama.cpp 启动后调用：用最新代理设置（从配置读取）启动代理，目标指向 llama.cpp
-    pub fn start_for_llama(&self, proxy_port: u16, cors: bool, allow_external: bool, llama_host: &str, llama_port: u16) {
-        let target = format!("http://{}:{}", llama_host, llama_port);
-        let config = ProxyConfig::new(proxy_port, target, cors, allow_external);
+    /// Start proxy server at app launch with empty routes table.
+    pub fn start_at_launch(
+        &self,
+        port: u16,
+        cors: bool,
+        allow_external: bool,
+        api_key: Option<String>,
+        app_handle: AppHandle,
+    ) {
+        let config = ProxyConfig::new(port, cors, allow_external, api_key, app_handle);
         let handle = start(config.clone());
-        // 先停掉旧实例
-        if let Ok(mut h) = self.handle.lock() {
-            if let Some(old) = h.take() { old.abort(); }
-            *h = Some(handle);
-        }
+        if let Ok(mut h) = self.handle.lock() { *h = Some(handle); }
         if let Ok(mut c) = self.config.lock() { *c = Some(config); }
     }
 
-    /// 停止代理（llama.cpp 停止时调用）
+    /// Register an instance route (called after llama.cpp starts).
+    pub fn register(&self, name: &str, port: u16) {
+        if let Ok(guard) = self.config.lock() {
+            if let Some(ref cfg) = *guard {
+                if let Ok(mut routes) = cfg.routes.write() {
+                    routes.insert(name.to_string(), port);
+                }
+            }
+        }
+    }
+
+    /// Unregister an instance route (called after llama.cpp stops).
+    pub fn unregister(&self, name: &str) {
+        if let Ok(guard) = self.config.lock() {
+            if let Some(ref cfg) = *guard {
+                if let Ok(mut routes) = cfg.routes.write() {
+                    routes.remove(name);
+                }
+            }
+        }
+    }
+
+    /// Stop proxy server (called on app shutdown).
     pub fn stop(&self) {
         if let Ok(mut h) = self.handle.lock() {
             if let Some(handle) = h.take() { handle.abort(); }
@@ -41,55 +66,69 @@ impl ProxyState {
     }
 }
 
-/// 修改代理设置并持久化；若代理正在运行则同步重启
+/// Update proxy settings and restart server; preserves existing routes.
 #[tauri::command]
 pub fn restart_proxy(
     port: u16,
     cors: bool,
     allow_external: bool,
+    api_key: Option<String>,
+    app_handle: AppHandle,
     state: State<Arc<ProxyState>>,
     config_store: State<Arc<ConfigStore>>,
 ) -> Result<(), String> {
-    // 持久化到 AppConfig
+    // Persist settings
     let mut app_config = config_store.load_config();
     app_config.proxy_port = port;
     app_config.proxy_cors = cors;
     app_config.proxy_allow_external = allow_external;
+    app_config.proxy_api_key = api_key.clone();
     config_store.save_config(&app_config)?;
 
-    // 只有代理正在运行时才重启（代理生命周期跟随 llama.cpp）
-    let mut handle_guard = state.handle.lock().map_err(|e| e.to_string())?;
-    if handle_guard.is_none() {
-        return Ok(()); // 未运行，只保存设置即可
+    // Snapshot current routes so they survive the restart
+    let existing_routes = {
+        let guard = state.config.lock().map_err(|e| e.to_string())?;
+        guard.as_ref()
+            .and_then(|cfg| cfg.routes.read().ok().map(|r| r.clone()))
+            .unwrap_or_default()
+    };
+
+    // Abort old server
+    if let Ok(mut h) = state.handle.lock() {
+        if let Some(old) = h.take() { old.abort(); }
     }
 
-    let mut config_guard = state.config.lock().map_err(|e| e.to_string())?;
-    let current_target = config_guard
-        .as_ref()
-        .and_then(|c| c.target.read().ok().map(|t| t.clone()))
-        .unwrap_or_else(|| "http://127.0.0.1:18000".into());
+    // Start new server with same routes
+    let new_config = ProxyConfig::new(port, cors, allow_external, api_key, app_handle);
+    {
+        let mut routes = new_config.routes.write().map_err(|e| e.to_string())?;
+        *routes = existing_routes;
+    }
+    let handle = start(new_config.clone());
+    if let Ok(mut h) = state.handle.lock() { *h = Some(handle); }
+    if let Ok(mut c) = state.config.lock() { *c = Some(new_config); }
 
-    if let Some(h) = handle_guard.take() { h.abort(); }
-
-    let config = ProxyConfig::new(port, current_target, cors, allow_external);
-    let handle = start(config.clone());
-    *handle_guard = Some(handle);
-    *config_guard = Some(config);
     Ok(())
 }
 
 #[tauri::command]
 pub fn get_proxy_status(state: State<Arc<ProxyState>>) -> Value {
+    let guard = state.config.lock().ok();
     let running = state.handle.lock().map(|g| g.is_some()).unwrap_or(false);
-    let config = state.config.lock().ok().and_then(|g| g.clone());
-    match config {
-        Some(c) if running => json!({
-            "running": true,
-            "port": c.port,
-            "cors": c.cors,
-            "allow_external": c.allow_external,
-            "target": c.target.read().map(|t| t.clone()).unwrap_or_default(),
-        }),
+
+    match guard.as_ref().and_then(|g| g.as_ref()) {
+        Some(cfg) if running => {
+            let routes: Vec<Value> = cfg.routes.read().ok()
+                .map(|r| r.iter().map(|(n, p)| json!({ "name": n, "port": p })).collect())
+                .unwrap_or_default();
+            json!({
+                "running": true,
+                "port": cfg.port,
+                "cors": cfg.cors,
+                "allow_external": cfg.allow_external,
+                "routes": routes,
+            })
+        }
         _ => json!({ "running": false }),
     }
 }

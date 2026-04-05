@@ -8,7 +8,7 @@ use tauri::Manager;
 
 use commands::proxy::ProxyState;
 use services::config_store::ConfigStore;
-use services::process_manager::ProcessManager;
+use services::instance_registry::InstanceRegistry;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,12 +22,21 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir).ok();
 
             let config_store = Arc::new(ConfigStore::new(&app_data_dir));
-            let process_manager = Arc::new(ProcessManager::new());
-            // 代理跟随大模型生命周期，不在 app 启动时自动开启
+            let instance_registry = Arc::new(InstanceRegistry::new());
             let proxy_state = Arc::new(ProxyState::new());
 
+            // Start proxy at app launch with empty routes table
+            let app_config = config_store.load_config();
+            proxy_state.start_at_launch(
+                app_config.proxy_port,
+                app_config.proxy_cors,
+                app_config.proxy_allow_external,
+                app_config.proxy_api_key,
+                app.handle().clone(),
+            );
+
             app.manage(config_store);
-            app.manage(process_manager);
+            app.manage(instance_registry);
             app.manage(proxy_state);
 
             Ok(())
@@ -37,20 +46,24 @@ pub fn run() {
                 if window.label() != "main" {
                     return;
                 }
-                let pm = window.state::<Arc<ProcessManager>>();
+                let registry = window.state::<Arc<InstanceRegistry>>();
                 let ps = window.state::<Arc<ProxyState>>();
-                let pm_clone = Arc::clone(&pm);
+                let registry_clone = Arc::clone(&registry);
                 let ps_clone = Arc::clone(&ps);
                 tauri::async_runtime::spawn(async move {
-                    pm_clone.stop().await.ok();
+                    registry_clone.stop_all().await;
                 });
                 ps_clone.stop();
             }
         })
         .invoke_handler(tauri::generate_handler![
-            commands::process::start_llama,
-            commands::process::stop_llama,
-            commands::process::get_llama_status,
+            commands::instance::start_instance,
+            commands::instance::stop_instance,
+            commands::instance::get_all_instances,
+            commands::instance::delete_instance_config,
+            commands::instance::list_model_presets,
+            commands::instance::save_model_preset,
+            commands::instance::delete_model_preset,
             commands::models::scan_models,
             commands::models::get_model_info,
             commands::config::get_config,

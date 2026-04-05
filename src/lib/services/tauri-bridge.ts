@@ -1,29 +1,48 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppConfig,
-  LaunchConfig,
+  InstanceConfig,
+  InstanceMap,
   LlamaInstall,
   ModelInfo,
-  ScanResult,
   Preset,
-  ProcessInfo,
+  ScanResult,
 } from "../types";
 
-// Process commands
-export const startLlama = (config: LaunchConfig) =>
-  invoke<void>("start_llama", { config });
+// ── Instance commands ─────────────────────────────────────────────────────────
 
-export const stopLlama = () => invoke<void>("stop_llama");
+export const startInstance = (config: InstanceConfig) =>
+  invoke<void>("start_instance", { config });
 
-export const getLlamaStatus = () => invoke<ProcessInfo>("get_llama_status");
+export const stopInstance = (name: string) =>
+  invoke<void>("stop_instance", { name });
 
-// Model commands
+export const getAllInstances = () =>
+  invoke<InstanceMap>("get_all_instances");
+
+export const deleteInstanceConfig = (name: string) =>
+  invoke<void>("delete_instance_config", { name });
+
+// ── Per-model preset commands ─────────────────────────────────────────────────
+
+export const listModelPresets = (modelFilename: string) =>
+  invoke<Preset[]>("list_model_presets", { modelFilename });
+
+export const saveModelPreset = (modelFilename: string, preset: Preset) =>
+  invoke<void>("save_model_preset", { modelFilename, preset });
+
+export const deleteModelPreset = (modelFilename: string, name: string) =>
+  invoke<void>("delete_model_preset", { modelFilename, name });
+
+// ── Model commands ────────────────────────────────────────────────────────────
+
 export const scanModels = () => invoke<ScanResult>("scan_models");
 
 export const getModelInfo = (path: string) =>
   invoke<ModelInfo>("get_model_info", { path });
 
-// Config commands
+// ── Config commands ───────────────────────────────────────────────────────────
+
 export const getConfig = () => invoke<AppConfig>("get_config");
 
 export const saveConfig = (config: AppConfig) =>
@@ -40,15 +59,27 @@ export const loadPreset = (name: string) =>
 export const deletePreset = (name: string) =>
   invoke<void>("delete_preset", { name });
 
-// Llama detection
+// ── Llama detection ───────────────────────────────────────────────────────────
+
 export const detectLlama = () => invoke<LlamaInstall[]>("detect_llama");
 
 export const validateLlamaPath = (path: string) =>
   invoke<LlamaInstall>("validate_llama_path", { path });
 
-// Proxy commands
-export const restartProxy = (port: number, cors: boolean, allowExternal: boolean) =>
-  invoke<void>("restart_proxy", { port, cors, allowExternal });
+// ── Proxy commands ────────────────────────────────────────────────────────────
+
+export const restartProxy = (
+  port: number,
+  cors: boolean,
+  allowExternal: boolean,
+  apiKey: string | null,
+) => invoke<void>("restart_proxy", { port, cors, allowExternal, apiKey });
 
 export const getProxyStatus = () =>
-  invoke<{ running: boolean; port?: number; cors?: boolean; allow_external?: boolean; target?: string }>("get_proxy_status");
+  invoke<{
+    running: boolean;
+    port?: number;
+    cors?: boolean;
+    allow_external?: boolean;
+    routes?: { name: string; port: number }[];
+  }>("get_proxy_status");

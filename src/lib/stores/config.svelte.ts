@@ -10,6 +10,8 @@ import {
 let config = $state<AppConfig>({
   llama_dir: null,
   model_dirs: [],
+  instances: [],
+  model_presets: {},
   default_params: {
     gpu_layers: 99,
     ctx_size: 4096,
@@ -33,6 +35,7 @@ let config = $state<AppConfig>({
   proxy_port: 8080,
   proxy_cors: true,
   proxy_allow_external: false,
+  proxy_api_key: null,
 });
 
 let presets = $state<Preset[]>([]);
