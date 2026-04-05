@@ -148,18 +148,15 @@ pub async fn handle_responses(
     let anthropic_req = codex_to_anthropic(&body);
     let target_url = format!("{}/v1/messages", target.trim_end_matches('/'));
 
-    // 5. Build request to llama.cpp — inject instance api_key if configured
-    let instance_api_key = get_instance_api_key(&cfg, model_name);
-    let mut req_builder = cfg.client
+    // 5. Build request to llama.cpp
+    let upstream = match cfg.client
         .post(&target_url)
         .header("Content-Type", "application/json")
-        .header("anthropic-version", "2023-06-01");
-
-    if let Some(ref key) = instance_api_key {
-        req_builder = req_builder.header("Authorization", format!("Bearer {}", key));
-    }
-
-    let upstream = match req_builder.json(&anthropic_req).send().await {
+        .header("anthropic-version", "2023-06-01")
+        .json(&anthropic_req)
+        .send()
+        .await
+    {
         Ok(r) => r,
         Err(e) => {
             let msg = format!("上游错误: {}", e);
@@ -290,16 +287,4 @@ pub async fn handle_passthrough(
     builder
         .body(axum::body::Body::from_stream(stream))
         .unwrap_or_else(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())
-}
-
-// ── Helper: get instance api key from routes ──────────────────────────────────
-
-/// Currently we don't store per-route api keys in ProxyConfig.
-/// The instance api_key is handled at the llama.cpp level via --api-key.
-/// The proxy just passes through whatever Authorization the instance expects.
-/// Since llama.cpp binds to 127.0.0.1 and the key is set via --api-key,
-/// we don't need to inject it here — llama.cpp will validate on its own.
-/// This function is a no-op placeholder for future per-route key injection.
-fn get_instance_api_key(_cfg: &ProxyConfig, _model_name: &str) -> Option<String> {
-    None
 }
