@@ -69,8 +69,7 @@ impl InstanceRegistry {
     // ── Emit helpers ──────────────────────────────────────────────────────────
 
     async fn emit_instances(&self, app: &AppHandle) {
-        let snapshot = self.get_all().await;
-        app.emit("llama://instances", &snapshot).ok();
+        emit_all_instances(&self.instances, app).await;
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -228,15 +227,17 @@ impl InstanceRegistry {
             started_at: None,
         }));
 
-        // Emit starting status
+        // Emit starting status — register first so the snapshot includes this instance
         {
-            let snapshot = info.lock().await.clone();
-            app.emit("llama://instances", &{
-                let mut m = HashMap::new();
-                m.insert(config.name.clone(), snapshot);
-                m
-            }).ok();
+            let mut guard = self.instances.lock().await;
+            guard.insert(config.name.clone(), InstanceState {
+                info: Arc::clone(&info),
+                child_handle: None,
+                child_pid: None,
+                sp_temp_path: None,
+            });
         }
+        self.emit_instances(&app).await;
 
         // Spawn process
         let mut cmd = Command::new(&bin_path);
@@ -279,12 +280,13 @@ impl InstanceRegistry {
                 let app = app_clone.clone();
                 let info = Arc::clone(&info_clone);
                 let name = instance_name.clone();
+                let instances = Arc::clone(&instances_ref);
                 async move {
                     if let Some(stdout) = stdout {
                         let reader = BufReader::new(stdout);
                         let mut lines = reader.lines();
                         while let Ok(Some(line)) = lines.next_line().await {
-                            maybe_flip_to_running(&line, &info, &app, is_server, &name).await;
+                            maybe_flip_to_running(&line, &info, &app, is_server, &name, &instances).await;
                             app.emit("llama://log", &LogEvent {
                                 instance: name.clone(), stream: "stdout".into(), line,
                             }).ok();
@@ -297,12 +299,13 @@ impl InstanceRegistry {
                 let app = app_clone.clone();
                 let info = Arc::clone(&info_clone);
                 let name = instance_name.clone();
+                let instances = Arc::clone(&instances_ref);
                 async move {
                     if let Some(stderr) = stderr {
                         let reader = BufReader::new(stderr);
                         let mut lines = reader.lines();
                         while let Ok(Some(line)) = lines.next_line().await {
-                            maybe_flip_to_running(&line, &info, &app, is_server, &name).await;
+                            maybe_flip_to_running(&line, &info, &app, is_server, &name, &instances).await;
                             app.emit("llama://log", &LogEvent {
                                 instance: name.clone(), stream: "stderr".into(), line,
                             }).ok();
@@ -327,26 +330,17 @@ impl InstanceRegistry {
             }
 
             // Emit full instances snapshot
-            let snapshot = {
-                let guard = instances_ref.lock().await;
-                let mut map: HashMap<String, InstanceInfo> = HashMap::new();
-                for (k, v) in guard.iter() {
-                    map.insert(k.clone(), v.info.lock().await.clone());
-                }
-                map
-            };
-            app_clone.emit("llama://instances", &snapshot).ok();
+            emit_all_instances(&instances_ref, &app_clone).await;
         });
 
-        // Register in registry
+        // Update registry entry with the live child handle (inserted earlier as placeholder)
         {
             let mut guard = self.instances.lock().await;
-            guard.insert(config.name.clone(), InstanceState {
-                info,
-                child_handle: Some(handle),
-                child_pid: pid,
-                sp_temp_path,
-            });
+            if let Some(state) = guard.get_mut(&config.name) {
+                state.child_handle = Some(handle);
+                state.child_pid = pid;
+                state.sp_temp_path = sp_temp_path;
+            }
         }
 
         // Emit full snapshot
@@ -432,7 +426,8 @@ async fn maybe_flip_to_running(
     info: &Arc<Mutex<InstanceInfo>>,
     app: &AppHandle,
     is_server: bool,
-    instance_name: &str,
+    _instance_name: &str,
+    instances: &Arc<Mutex<HashMap<String, InstanceState>>>,
 ) {
     if !is_server { return; }
     let mut guard = info.lock().await;
@@ -440,14 +435,8 @@ async fn maybe_flip_to_running(
     let lower = line.to_lowercase();
     if lower.contains("listening") || lower.contains("server listening") {
         guard.status = InstanceStatus::Running;
-        let snapshot = guard.clone();
         drop(guard);
-        // Emit full instances snapshot so the frontend store updates
-        app.emit("llama://instances", &{
-            let mut m = HashMap::new();
-            m.insert(instance_name.to_string(), snapshot);
-            m
-        }).ok();
+        emit_all_instances(instances, app).await;
     }
 }
 
@@ -480,4 +469,18 @@ fn parse_shell_args(input: &str, args: &mut Vec<String>) -> Result<(), String> {
     if in_double { return Err("额外参数中存在未闭合的双引号".into()); }
     if !current.is_empty() { args.push(current); }
     Ok(())
+}
+
+// ── Shared emit helper (usable inside spawn closures) ────────────────────────
+
+async fn emit_all_instances(
+    instances: &Arc<Mutex<HashMap<String, InstanceState>>>,
+    app: &AppHandle,
+) {
+    let guard = instances.lock().await;
+    let mut map: HashMap<String, InstanceInfo> = HashMap::new();
+    for (k, v) in guard.iter() {
+        map.insert(k.clone(), v.info.lock().await.clone());
+    }
+    app.emit("llama://instances", &map).ok();
 }
