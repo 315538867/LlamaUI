@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -52,6 +53,8 @@ impl Default for ProcessInfo {
 pub struct ProcessManager {
     pub info: Arc<Mutex<ProcessInfo>>,
     child_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    child_pid: Arc<Mutex<Option<u32>>>,
+    sp_temp_path: Arc<Mutex<Option<PathBuf>>>,
     app_handle: Arc<Mutex<Option<AppHandle>>>,
 }
 
@@ -66,6 +69,8 @@ impl ProcessManager {
         Self {
             info: Arc::new(Mutex::new(ProcessInfo::default())),
             child_handle: Arc::new(Mutex::new(None)),
+            child_pid: Arc::new(Mutex::new(None)),
+            sp_temp_path: Arc::new(Mutex::new(None)),
             app_handle: Arc::new(Mutex::new(None)),
         }
     }
@@ -120,11 +125,20 @@ impl ProcessManager {
             args.push(threads.to_string());
         }
 
+        // 确定实际端口（0 或 None → 随机空闲端口）
+        let actual_port = if matches!(config.mode, LaunchMode::Server) {
+            let p = config.port.unwrap_or(0);
+            Some(if p == 0 { find_free_port() } else { p })
+        } else {
+            None
+        };
+
         // Server-specific args
         if matches!(config.mode, LaunchMode::Server) {
-            let port = config.port.unwrap_or(8080);
+            let port = actual_port.unwrap();
+            let host = config.host.clone().unwrap_or_else(|| "127.0.0.1".into());
             args.push("--host".into());
-            args.push(config.host.clone().unwrap_or_else(|| "127.0.0.1".into()));
+            args.push(host);
             args.push("--port".into());
             args.push(port.to_string());
 
@@ -188,12 +202,19 @@ impl ProcessManager {
                     args.push(key.clone());
                 }
             }
-            // System prompt — write to temp file, pass via --system-prompt-file
+            // System prompt — write to uniquely-named temp file, pass via --system-prompt-file
             if let Some(ref sp) = config.system_prompt {
                 if !sp.is_empty() {
-                    let tmp = std::env::temp_dir().join("llama_system_prompt.txt");
+                    let pid_hint = std::process::id();
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    let filename = format!("llama_sp_{}_{}.txt", ts, pid_hint);
+                    let tmp = std::env::temp_dir().join(&filename);
                     std::fs::write(&tmp, sp)
                         .map_err(|e| format!("写入系统提示词临时文件失败: {}", e))?;
+                    *self.sp_temp_path.lock().await = Some(tmp.clone());
                     args.push("--system-prompt-file".into());
                     args.push(tmp.to_string_lossy().into_owned());
                 }
@@ -214,7 +235,10 @@ impl ProcessManager {
 
         // Extra args — shell-style splitting to handle quoted strings
         if let Some(ref extra) = config.extra_args {
-            parse_shell_args(extra, &mut args);
+            if !extra.trim().is_empty() {
+                parse_shell_args(extra, &mut args)
+                    .map_err(|e| format!("额外参数解析失败: {}", e))?;
+            }
         }
 
         // Update status to Starting (hold lock for both update and emit)
@@ -223,11 +247,7 @@ impl ProcessManager {
             info.status = ProcessStatus::Starting;
             info.mode = Some(config.mode);
             info.model = Some(config.model_path.clone());
-            info.port = if matches!(config.mode, LaunchMode::Server) {
-                Some(config.port.unwrap_or(8080))
-            } else {
-                None
-            };
+            info.port = actual_port;
             self.emit_status(&app, &info);
         }
 
@@ -246,46 +266,58 @@ impl ProcessManager {
             .map_err(|e| format!("启动失败: {}", e))?;
 
         let pid = child.id();
+
+        // Store PID for forceful kill on stop
+        *self.child_pid.lock().await = pid;
+
         {
             let mut info = self.info.lock().await;
             info.pid = pid;
-            info.status = ProcessStatus::Running;
             info.started_at = Some(
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
+                    .unwrap_or_default()
                     .as_secs(),
             );
+            // Keep status as Starting; log monitor will flip to Running when "listening" appears
             self.emit_status(&app, &info);
         }
 
         // Stream stdout/stderr in background task
         let info_clone = self.info.clone();
         let app_clone = app.clone();
+        let is_server = matches!(config.mode, LaunchMode::Server);
 
         let handle = tokio::spawn(async move {
             let stdout = child.stdout.take();
             let stderr = child.stderr.take();
 
-            let app_out = app_clone.clone();
-            let app_err = app_clone.clone();
-
-            let stdout_task = tokio::spawn(async move {
-                if let Some(stdout) = stdout {
-                    let reader = BufReader::new(stdout);
-                    let mut lines = reader.lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        app_out.emit("llama://log", &LogEvent { stream: "stdout".into(), line }).ok();
+            let stdout_task = tokio::spawn({
+                let app = app_clone.clone();
+                let info = info_clone.clone();
+                async move {
+                    if let Some(stdout) = stdout {
+                        let reader = BufReader::new(stdout);
+                        let mut lines = reader.lines();
+                        while let Ok(Some(line)) = lines.next_line().await {
+                            maybe_flip_to_running(&line, &info, &app, is_server).await;
+                            app.emit("llama://log", &LogEvent { stream: "stdout".into(), line }).ok();
+                        }
                     }
                 }
             });
 
-            let stderr_task = tokio::spawn(async move {
-                if let Some(stderr) = stderr {
-                    let reader = BufReader::new(stderr);
-                    let mut lines = reader.lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        app_err.emit("llama://log", &LogEvent { stream: "stderr".into(), line }).ok();
+            let stderr_task = tokio::spawn({
+                let app = app_clone.clone();
+                let info = info_clone.clone();
+                async move {
+                    if let Some(stderr) = stderr {
+                        let reader = BufReader::new(stderr);
+                        let mut lines = reader.lines();
+                        while let Ok(Some(line)) = lines.next_line().await {
+                            maybe_flip_to_running(&line, &info, &app, is_server).await;
+                            app.emit("llama://log", &LogEvent { stream: "stderr".into(), line }).ok();
+                        }
                     }
                 }
             });
@@ -319,16 +351,35 @@ impl ProcessManager {
             handle.abort();
         }
 
-        // Reset state and emit event (#3 fix)
-        {
-            let mut info = self.info.lock().await;
-            let was_running = info.status != ProcessStatus::Stopped;
-            *info = ProcessInfo::default();
+        // Forcefully kill by PID to handle orphans
+        if let Some(pid) = self.child_pid.lock().await.take() {
+            #[cfg(windows)]
+            {
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/F", "/PID", &pid.to_string(), "/T"])
+                    .output();
+            }
+            #[cfg(unix)]
+            {
+                unsafe { libc::kill(pid as i32, libc::SIGKILL); }
+            }
+        }
 
-            if was_running {
-                if let Some(app) = self.app_handle.lock().await.as_ref() {
-                    self.emit_status(app, &info);
-                }
+        // Clean up system prompt temp file
+        if let Some(path) = self.sp_temp_path.lock().await.take() {
+            let _ = std::fs::remove_file(path);
+        }
+
+        // Reset state — drop info lock before acquiring app_handle to avoid deadlock
+        let was_running = {
+            let mut info = self.info.lock().await;
+            let was = info.status != ProcessStatus::Stopped;
+            *info = ProcessInfo::default();
+            was
+        };
+        if was_running {
+            if let Some(app) = self.app_handle.lock().await.as_ref() {
+                app.emit("llama://status-change", &ProcessInfo::default()).ok();
             }
         }
 
@@ -346,8 +397,39 @@ struct LogEvent {
     line: String,
 }
 
-/// Parse shell-style arguments, handling quoted strings (#1 fix)
-fn parse_shell_args(input: &str, args: &mut Vec<String>) {
+/// Flip Starting → Running when the output line signals the server is listening.
+/// Checks status before calling to_lowercase to avoid unnecessary allocation.
+async fn maybe_flip_to_running(
+    line: &str,
+    info: &Arc<Mutex<ProcessInfo>>,
+    app: &AppHandle,
+    is_server: bool,
+) {
+    if !is_server {
+        return;
+    }
+    let mut guard = info.lock().await;
+    if guard.status != ProcessStatus::Starting {
+        return;
+    }
+    let lower = line.to_lowercase();
+    if lower.contains("listening") || lower.contains("server listening") {
+        guard.status = ProcessStatus::Running;
+        app.emit("llama://status-change", &*guard).ok();
+    }
+}
+
+/// 让 OS 分配一个空闲端口（绑定后立即释放）
+fn find_free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|l| l.local_addr())
+        .map(|a| a.port())
+        .unwrap_or(18000)
+}
+
+/// Parse shell-style arguments, handling quoted strings.
+/// Returns Err if there is an unclosed quote.
+fn parse_shell_args(input: &str, args: &mut Vec<String>) -> Result<(), String> {
     let mut current = String::new();
     let mut in_single_quote = false;
     let mut in_double_quote = false;
@@ -371,7 +453,17 @@ fn parse_shell_args(input: &str, args: &mut Vec<String>) {
             _ => current.push(ch),
         }
     }
+
+    if in_single_quote {
+        return Err("额外参数中存在未闭合的单引号".into());
+    }
+    if in_double_quote {
+        return Err("额外参数中存在未闭合的双引号".into());
+    }
+
     if !current.is_empty() {
         args.push(current);
     }
+
+    Ok(())
 }

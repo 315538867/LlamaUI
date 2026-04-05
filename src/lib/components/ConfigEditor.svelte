@@ -10,7 +10,15 @@
   let detectedInstalls = $state<LlamaInstall[]>([]);
   let detecting = $state(false);
   let validationMsg = $state("");
+  let saveError = $state("");
   let copied = $state<string | null>(null);
+  let saveErrorTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function showSaveError(e: unknown) {
+    clearTimeout(saveErrorTimer);
+    saveError = String(e);
+    saveErrorTimer = setTimeout(() => { saveError = ""; }, 3000);
+  }
 
   $effect(() => {
     if (configStore.loaded) llamaPath = configStore.config.llama_dir ?? "";
@@ -18,7 +26,7 @@
 
   // 从默认参数派生服务地址
   const serverHost = $derived(configStore.config.default_params.host ?? "127.0.0.1");
-  const serverPort = $derived(configStore.config.default_params.port ?? 8080);
+  const serverPort = $derived(configStore.config.default_params.port ?? 8000);
   const serverApiKey = $derived(configStore.config.default_params.api_key ?? "");
   const baseUrl = $derived(`http://${serverHost}:${serverPort}`);
 
@@ -39,8 +47,13 @@
     try {
       await validateLlamaPath(llamaPath);
       validationMsg = "";
+    } catch (e) {
+      validationMsg = String(e);
+      return;
+    }
+    try {
       await configStore.save({ ...configStore.config, llama_dir: llamaPath });
-    } catch (e) { validationMsg = String(e); }
+    } catch (e) { showSaveError(e); }
   }
 
   function useDetected(install: LlamaInstall) {
@@ -51,18 +64,22 @@
   async function addModelDir() {
     const result = await open({ directory: true, title: "选择模型目录" });
     if (result && typeof result === "string") {
-      await configStore.save({
-        ...configStore.config,
-        model_dirs: [...configStore.config.model_dirs, result],
-      });
+      try {
+        await configStore.save({
+          ...configStore.config,
+          model_dirs: [...configStore.config.model_dirs, result],
+        });
+      } catch (e) { showSaveError(e); }
     }
   }
 
   async function removeModelDir(dir: string) {
-    await configStore.save({
-      ...configStore.config,
-      model_dirs: configStore.config.model_dirs.filter((d) => d !== dir),
-    });
+    try {
+      await configStore.save({
+        ...configStore.config,
+        model_dirs: configStore.config.model_dirs.filter((d) => d !== dir),
+      });
+    } catch (e) { showSaveError(e); }
   }
 
   function copyText(text: string, key: string) {
@@ -129,6 +146,10 @@
         </div>
       {/if}
     </div>
+
+    {#if saveError}
+      <div class="error-bar" style="margin:0 0 4px">{saveError}</div>
+    {/if}
 
     <!-- ─ 模型目录 ─ -->
     <div class="section">

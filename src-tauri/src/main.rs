@@ -18,6 +18,28 @@ fn main() {
         return;
     }
 
+    // CLI subcommand: `llamaui proxy [--port PORT] [--target URL]`
+    if args.len() > 1 && args[1] == "proxy" {
+        let mut port: u16 = 8080;
+        let mut target = "http://127.0.0.1:8000".to_string();
+        let mut i = 2;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--port" if i + 1 < args.len() => {
+                    port = args[i + 1].parse().unwrap_or(8080);
+                    i += 2;
+                }
+                "--target" if i + 1 < args.len() => {
+                    target = args[i + 1].clone();
+                    i += 2;
+                }
+                _ => { i += 1; }
+            }
+        }
+        llamaui_lib::proxy::server::run_proxy_server(port, &target);
+        return;
+    }
+
     // Default: launch GUI
     llamaui_lib::run()
 }

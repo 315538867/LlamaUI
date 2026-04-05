@@ -8,26 +8,24 @@
   let searchQuery = $state("");
   let viewMode = $state<"list" | "grid">("list");
   let copiedPath = $state<string | null>(null);
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 
   function copyName(model: { name: string; path: string }) {
     navigator.clipboard.writeText(model.name).then(() => {
+      clearTimeout(copiedTimer);
       copiedPath = model.path;
-      setTimeout(() => { copiedPath = null; }, 1500);
+      copiedTimer = setTimeout(() => { copiedPath = null; }, 1500);
     });
   }
 
   const filteredModels = $derived(
-    modelStore.models.filter((m) =>
-      searchQuery
-        ? m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (m.quantization?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
-        : true
-    )
+    modelStore.models.filter((m) => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return m.name.toLowerCase().includes(q) ||
+        (m.quantization?.toLowerCase().includes(q) ?? false);
+    })
   );
-
-  $effect(() => {
-    if (configStore.loaded && modelStore.models.length === 0) modelStore.refresh();
-  });
 
   function quantBg(q: string | null | undefined) {
     if (!q) return "var(--bg-overlay)";
@@ -73,6 +71,15 @@
       placeholder="搜索模型名称或量化类型..."
     />
   </div>
+
+  <!-- 扫描错误 banner -->
+  {#if modelStore.scanErrors.length > 0}
+    <div class="scan-warn">
+      {#each modelStore.scanErrors as err}
+        <div>⚠ {err}</div>
+      {/each}
+    </div>
+  {/if}
 
   <!-- 内容区 -->
   <div class="content">
@@ -252,6 +259,19 @@
   border: 1px solid rgba(239,68,68,0.2);
   border-radius: 4px;
   text-align: center;
+}
+.scan-warn {
+  margin: 0 16px 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--warning, #f59e0b);
+  background: rgba(245,158,11,0.08);
+  border: 1px solid rgba(245,158,11,0.25);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
 }
 
 /* ─ Copy button ─ */

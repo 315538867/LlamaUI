@@ -9,7 +9,16 @@ pub struct AppConfig {
     pub model_dirs: Vec<String>,
     pub default_params: LaunchParams,
     pub last_preset: Option<String>,
+    #[serde(default = "default_proxy_port")]
+    pub proxy_port: u16,
+    #[serde(default = "default_true")]
+    pub proxy_cors: bool,
+    #[serde(default)]
+    pub proxy_allow_external: bool,
 }
+
+fn default_proxy_port() -> u16 { 8080 }
+fn default_true() -> bool { true }
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -18,6 +27,9 @@ impl Default for AppConfig {
             model_dirs: Vec::new(),
             default_params: LaunchParams::default(),
             last_preset: None,
+            proxy_port: 8080,
+            proxy_cors: true,
+            proxy_allow_external: false,
         }
     }
 }
@@ -41,7 +53,6 @@ pub struct LaunchParams {
     pub mlock: Option<bool>,
     pub no_mmap: Option<bool>,
     pub api_key: Option<String>,
-    pub cors_allow_origins: Option<String>,
     pub system_prompt: Option<String>,
     pub extra_args: Option<String>,
 }
@@ -52,7 +63,7 @@ impl Default for LaunchParams {
             gpu_layers: Some(99),
             ctx_size: Some(4096),
             threads: None,
-            port: Some(8000),
+            port: None,            // None → 启动时随机分配空闲端口
             host: Some("127.0.0.1".into()),
             flash_attn: Some(true),
             cont_batching: Some(true),
@@ -66,7 +77,6 @@ impl Default for LaunchParams {
             mlock: None,
             no_mmap: None,
             api_key: None,
-            cors_allow_origins: None,
             system_prompt: None,
             extra_args: None,
         }
@@ -94,7 +104,6 @@ pub struct LaunchConfig {
     pub mlock: Option<bool>,
     pub no_mmap: Option<bool>,
     pub api_key: Option<String>,
-    pub cors_allow_origins: Option<String>,
     pub system_prompt: Option<String>,
     pub prompt: Option<String>,
     pub predict: Option<u32>,
@@ -111,6 +120,8 @@ pub struct Preset {
 pub struct ConfigStore {
     config_path: PathBuf,
     presets_path: PathBuf,
+    cache: std::sync::Mutex<Option<AppConfig>>,
+    presets_cache: std::sync::Mutex<Option<Vec<Preset>>>,
 }
 
 impl ConfigStore {
@@ -118,35 +129,62 @@ impl ConfigStore {
         Self {
             config_path: app_data_dir.join("config.json"),
             presets_path: app_data_dir.join("presets.json"),
+            cache: std::sync::Mutex::new(None),
+            presets_cache: std::sync::Mutex::new(None),
         }
     }
 
     pub fn load_config(&self) -> AppConfig {
-        if self.config_path.exists() {
+        // Cache hit — avoid disk read
+        if let Ok(guard) = self.cache.lock() {
+            if let Some(ref cfg) = *guard {
+                return cfg.clone();
+            }
+        }
+        // Cache miss — read from disk
+        let config = if self.config_path.exists() {
             std::fs::read_to_string(&self.config_path)
                 .ok()
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default()
         } else {
             AppConfig::default()
+        };
+        if let Ok(mut guard) = self.cache.lock() {
+            *guard = Some(config.clone());
         }
+        config
     }
 
     pub fn save_config(&self, config: &AppConfig) -> Result<(), String> {
         let json = serde_json::to_string_pretty(config)
             .map_err(|e| format!("序列化失败: {}", e))?;
-        atomic_write(&self.config_path, &json)
+        atomic_write(&self.config_path, &json)?;
+        // Update cache on successful save
+        if let Ok(mut guard) = self.cache.lock() {
+            *guard = Some(config.clone());
+        }
+        Ok(())
     }
 
     pub fn list_presets(&self) -> Vec<Preset> {
-        if self.presets_path.exists() {
+        if let Ok(guard) = self.presets_cache.lock() {
+            if let Some(ref presets) = *guard {
+                return presets.clone();
+            }
+        }
+        let presets = if self.presets_path.exists() {
             std::fs::read_to_string(&self.presets_path)
                 .ok()
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default()
         } else {
             Vec::new()
+        };
+        if let Ok(mut guard) = self.presets_cache.lock() {
+            *guard = Some(presets.clone());
         }
+        presets
     }
 
     pub fn save_preset(&self, preset: Preset) -> Result<(), String> {
@@ -179,16 +217,25 @@ impl ConfigStore {
     fn write_presets(&self, presets: &[Preset]) -> Result<(), String> {
         let json = serde_json::to_string_pretty(presets)
             .map_err(|e| format!("序列化失败: {}", e))?;
-        atomic_write(&self.presets_path, &json)
+        atomic_write(&self.presets_path, &json)?;
+        if let Ok(mut guard) = self.presets_cache.lock() {
+            *guard = Some(presets.to_vec());
+        }
+        Ok(())
     }
 }
 
-/// Write to a temp file then rename for crash safety (#9 fix)
+/// Write to a temp file then rename for crash safety.
+/// Falls back to direct write if rename fails (e.g. cross-device on Windows).
 fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
     let tmp_path = path.with_extension("tmp");
     std::fs::write(&tmp_path, content)
         .map_err(|e| format!("写入临时文件失败: {}", e))?;
-    std::fs::rename(&tmp_path, path)
-        .map_err(|e| format!("重命名失败: {}", e))?;
+    if std::fs::rename(&tmp_path, path).is_err() {
+        // Fallback: direct write (less crash-safe but avoids cross-device rename failure)
+        std::fs::write(path, content)
+            .map_err(|e| format!("写入配置文件失败: {}", e))?;
+        let _ = std::fs::remove_file(&tmp_path);
+    }
     Ok(())
 }

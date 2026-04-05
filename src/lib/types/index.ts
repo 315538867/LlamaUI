@@ -31,7 +31,6 @@ export interface LaunchConfig {
   mlock?: boolean;
   no_mmap?: boolean;
   api_key?: string;
-  cors_allow_origins?: string;
   system_prompt?: string;
   prompt?: string;
   predict?: number;
@@ -46,6 +45,11 @@ export interface ModelInfo {
   size_display: string;
   quantization: string | null;
   modified: number | null;
+}
+
+export interface ScanResult {
+  models: ModelInfo[];
+  scan_errors: string[];
 }
 
 // Config types
@@ -74,7 +78,6 @@ export interface LaunchParams {
   mlock: boolean | null;
   no_mmap: boolean | null;
   api_key: string | null;
-  cors_allow_origins: string | null;
   system_prompt: string | null;
   extra_args: string | null;
 }

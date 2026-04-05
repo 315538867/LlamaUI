@@ -1,15 +1,29 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { getProcessStore } from "../stores/process.svelte";
 
   const process = getProcessStore();
 
   let logContainer: HTMLDivElement;
   let autoScroll = $state(true);
+  let rafId: number | undefined;
 
   $effect(() => {
+    // Access logs.length to subscribe to updates
     if (autoScroll && logContainer && process.logs.length > 0) {
-      logContainer.scrollTop = logContainer.scrollHeight;
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        logContainer.scrollTop = logContainer.scrollHeight;
+        rafId = undefined;
+      });
     }
+    return () => {
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
+    };
+  });
+
+  onDestroy(() => {
+    if (rafId !== undefined) cancelAnimationFrame(rafId);
   });
 </script>
 

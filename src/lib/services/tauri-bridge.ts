@@ -4,6 +4,7 @@ import type {
   LaunchConfig,
   LlamaInstall,
   ModelInfo,
+  ScanResult,
   Preset,
   ProcessInfo,
 } from "../types";
@@ -17,7 +18,7 @@ export const stopLlama = () => invoke<void>("stop_llama");
 export const getLlamaStatus = () => invoke<ProcessInfo>("get_llama_status");
 
 // Model commands
-export const scanModels = () => invoke<ModelInfo[]>("scan_models");
+export const scanModels = () => invoke<ScanResult>("scan_models");
 
 export const getModelInfo = (path: string) =>
   invoke<ModelInfo>("get_model_info", { path });
@@ -44,3 +45,10 @@ export const detectLlama = () => invoke<LlamaInstall[]>("detect_llama");
 
 export const validateLlamaPath = (path: string) =>
   invoke<LlamaInstall>("validate_llama_path", { path });
+
+// Proxy commands
+export const restartProxy = (port: number, cors: boolean, allowExternal: boolean) =>
+  invoke<void>("restart_proxy", { port, cors, allowExternal });
+
+export const getProxyStatus = () =>
+  invoke<{ running: boolean; port?: number; cors?: boolean; allow_external?: boolean; target?: string }>("get_proxy_status");

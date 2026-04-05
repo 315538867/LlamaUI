@@ -48,7 +48,7 @@ export function getProcessStore() {
     }).then((fn) => _unlisteners.push(fn));
 
     listen<LogEvent>("llama://log", (event) => {
-      if (logs.length >= 2000) logs.splice(0, 500);
+      if (logs.length >= 1000) logs = logs.slice(500);
       logs.push({ ...event.payload, ts: Date.now() });
       parsePerfLine(event.payload.line);
     }).then((fn) => _unlisteners.push(fn));
@@ -65,6 +65,7 @@ export function getProcessStore() {
     get promptTps()   { return promptTps; },
     clearLogs() { logs = []; },
     destroy() {
+      if (!_initialized) return;
       for (const fn of _unlisteners) fn();
       _unlisteners = [];
       _initialized = false;

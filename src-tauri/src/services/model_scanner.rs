@@ -22,12 +22,17 @@ pub fn scan_directory(dir: &str) -> Result<Vec<ModelInfo>, String> {
     }
 
     let mut models = Vec::new();
-    scan_recursive(path, &mut models);
-    models.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    scan_recursive(path, &mut models, 0);
+    models.sort_by_key(|m| m.name.to_lowercase());
     Ok(models)
 }
 
-fn scan_recursive(dir: &Path, models: &mut Vec<ModelInfo>) {
+const MAX_DEPTH: u32 = 6;
+
+fn scan_recursive(dir: &Path, models: &mut Vec<ModelInfo>, depth: u32) {
+    if depth >= MAX_DEPTH {
+        return;
+    }
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -36,7 +41,7 @@ fn scan_recursive(dir: &Path, models: &mut Vec<ModelInfo>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            scan_recursive(&path, models);
+            scan_recursive(&path, models, depth + 1);
         } else if let Some(ext) = path.extension() {
             if ext.to_str().unwrap_or("").to_lowercase() == "gguf" {
                 if let Some(info) = parse_model_file(&path) {
@@ -62,7 +67,7 @@ pub fn parse_model_file(path: &Path) -> Option<ModelInfo> {
 
     Some(ModelInfo {
         name,
-        path: path.to_string_lossy().to_string(),
+        path: path.to_str()?.to_string(),
         size_bytes: size,
         size_display: format_size(size),
         quantization,

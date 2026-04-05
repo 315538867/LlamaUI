@@ -2,7 +2,7 @@
   import { getProcessStore } from "../stores/process.svelte";
   import { getModelStore } from "../stores/models.svelte";
   import { getConfigStore } from "../stores/config.svelte";
-  import { startLlama, stopLlama } from "../services/tauri-bridge";
+  import { startLlama, stopLlama, restartProxy, getProxyStatus } from "../services/tauri-bridge";
   import LogTerminal from "./LogTerminal.svelte";
   import type { LaunchMode, LaunchConfig } from "../types";
 
@@ -29,13 +29,19 @@
   let noMmap = $state(false);
   let noKvOffload = $state(false);
   let apiKey = $state("");
-  let corsAllowOrigins = $state("*");
   let systemPrompt = $state("");
   let extraArgs = $state("");
   let launching = $state(false);
   let launchError = $state<string | null>(null);
   let activePreset = $state<string | null>(null);
   let showAdvanced = $state(false);
+  let paramsLoaded = false;
+
+  // 代理状态（自动启动，只读）
+  let proxyPort = $state(8080);
+  let proxyRunning = $state(false);
+  let proxyCors = $state(true);
+  let proxyAllowExternal = $state(false);
 
   // RTX 5080 16GB 预设（按模型档位）
   const GPU_PRESETS = [
@@ -60,13 +66,8 @@
   }
 
   $effect(() => {
-    if (configStore.loaded && modelStore.models.length === 0) {
-      modelStore.refresh();
-    }
-  });
-
-  $effect(() => {
-    if (configStore.loaded) {
+    if (configStore.loaded && !paramsLoaded) {
+      paramsLoaded = true;
       const p = configStore.config.default_params;
       if (p.gpu_layers   != null) gpuLayers   = p.gpu_layers;
       if (p.ctx_size     != null) ctxSize     = p.ctx_size;
@@ -85,7 +86,6 @@
       if (p.mlock        != null) mlock       = p.mlock;
       if (p.no_mmap      != null) noMmap      = p.no_mmap;
       if (p.api_key      != null) apiKey      = p.api_key;
-      if (p.cors_allow_origins != null) corsAllowOrigins = p.cors_allow_origins;
       if (p.system_prompt != null) systemPrompt = p.system_prompt;
     }
   });
@@ -116,7 +116,6 @@
         mlock:       mlock || undefined,
         no_mmap:     noMmap || undefined,
         api_key:     isServer && apiKey ? apiKey : undefined,
-        cors_allow_origins: isServer && corsAllowOrigins ? corsAllowOrigins : undefined,
         system_prompt: isServer && systemPrompt ? systemPrompt : undefined,
         extra_args:  extraArgs || undefined,
       };
@@ -129,7 +128,24 @@
   }
 
   async function handleStop() {
-    try { await stopLlama(); } catch (e) { console.error("Stop failed:", e); }
+    try { await stopLlama(); } catch (e) { launchError = String(e); }
+  }
+
+  $effect(() => {
+    getProxyStatus().then(s => {
+      proxyRunning = s.running;
+      if (s.port) proxyPort = s.port;
+      if (s.cors !== undefined) proxyCors = s.cors;
+      if (s.allow_external !== undefined) proxyAllowExternal = s.allow_external;
+    }).catch(() => {});
+  });
+
+  async function handleProxySettingChange() {
+    try {
+      await restartProxy(proxyPort, proxyCors, proxyAllowExternal);
+    } catch (e) {
+      console.error("restart proxy failed:", e);
+    }
   }
 </script>
 
@@ -157,7 +173,10 @@
   </div>
 
   {#if launchError}
-    <div class="error-bar">{launchError}</div>
+    <div class="error-bar">
+      <span>{launchError}</span>
+      <button class="error-close" onclick={() => launchError = null}>×</button>
+    </div>
   {/if}
 
   <!-- ── 配置面板 ── -->
@@ -240,7 +259,7 @@
           </select>
         </label>
         <label class="field">
-          <span class="field-label">端口 <span class="hint">--port，默认 8080</span></span>
+          <span class="field-label">端口 <span class="hint">--port，默认 8000</span></span>
           <input class="input" type="number" bind:value={port} min="1024" max="65535" />
         </label>
       </div>
@@ -249,10 +268,6 @@
           <span class="field-label">API Key <span class="hint">--api-key，留空则无需鉴权</span></span>
           <input class="input font-mono" type="text" bind:value={apiKey} placeholder="sk-..." autocomplete="off" />
         </label>
-        <div class="field">
-          <span class="field-label">CORS</span>
-          <div class="cors-note">新版 llama-server 已内置允许所有来源，无需配置</div>
-        </div>
       </div>
       <div class="switch-row">
         <label class="switch-item">
@@ -356,6 +371,32 @@
       </label>
     </div>
 
+    <!-- Codex 协议代理 -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Codex 协议代理</span>
+        <span class="badge-running" class:badge-inactive={!proxyRunning}>
+          {proxyRunning ? `运行中 :${proxyPort}` : "未就绪"}
+        </span>
+      </div>
+      <div class="proxy-hint">
+        将 Codex CLI 的 OpenAI Responses API 请求转换为 Anthropic Messages API 格式，转发给 llama.cpp。
+      </div>
+      <div class="switch-row" style="margin-top:6px;">
+        <label class="switch-item">
+          <input type="checkbox" bind:checked={proxyCors} onchange={handleProxySettingChange} />
+          <span>CORS <span class="hint">允许浏览器跨域请求</span></span>
+        </label>
+        <label class="switch-item">
+          <input type="checkbox" bind:checked={proxyAllowExternal} onchange={handleProxySettingChange} />
+          <span>局域网访问 <span class="hint">监听 0.0.0.0，局域网设备可连接</span></span>
+        </label>
+      </div>
+      <div class="proxy-usage">
+        Codex CLI: <code>OPENAI_BASE_URL=http://127.0.0.1:{proxyPort} codex ...</code>
+      </div>
+    </div>
+
   </div>
 
   <!-- ── 日志终端 ── -->
@@ -431,7 +472,23 @@
   border: 1px solid rgba(239,68,68,0.2);
   border-radius: 4px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+.error-bar span { flex: 1; }
+.error-close {
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.error-close:hover { opacity: 1; }
 
 /* ─ Config panel ─ */
 .config-panel {
@@ -588,17 +645,6 @@
 }
 
 /* ─ System prompt ─ */
-.cors-note {
-  height: 26px;
-  display: flex;
-  align-items: center;
-  font-size: 11px;
-  color: var(--text-muted);
-  padding: 0 8px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-}
 .input.sys-prompt {
   height: auto;
   padding: 6px 8px;
@@ -619,6 +665,39 @@
   border-radius: 2px;
   padding: 0 3px;
   color: var(--text-secondary);
+}
+
+/* ─ Proxy ─ */
+.badge-running {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(34,197,94,0.12);
+  color: #22c55e;
+  font-weight: 600;
+}
+.badge-running.badge-inactive {
+  background: rgba(156,163,175,0.15);
+  color: var(--text-muted);
+}
+.proxy-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+.proxy-usage {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.proxy-usage code {
+  font-family: monospace;
+  background: var(--bg-overlay);
+  border-radius: 2px;
+  padding: 1px 4px;
+  color: var(--text-secondary);
+  font-size: 10px;
 }
 
 /* ─ Log area ─ */

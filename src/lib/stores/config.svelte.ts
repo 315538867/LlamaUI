@@ -2,9 +2,9 @@ import type { AppConfig, Preset } from "../types";
 import {
   getConfig,
   saveConfig as saveConfigApi,
-  listPresets,
   savePreset as savePresetApi,
   deletePreset as deletePresetApi,
+  listPresets,
 } from "../services/tauri-bridge";
 
 let config = $state<AppConfig>({
@@ -28,7 +28,6 @@ let config = $state<AppConfig>({
     mlock: null,
     no_mmap: null,
     api_key: null,
-    cors_allow_origins: null,
     system_prompt: null,
     extra_args: null,
   },
@@ -72,13 +71,20 @@ export function getConfigStore() {
     },
 
     async savePreset(preset: Preset) {
+      // Optimistic update: replace in-place or append
+      const idx = presets.findIndex((p) => p.name === preset.name);
+      if (idx >= 0) {
+        presets = presets.map((p, i) => (i === idx ? preset : p));
+      } else {
+        presets = [...presets, preset];
+      }
       await savePresetApi(preset);
-      presets = await listPresets();
     },
 
     async deletePreset(name: string) {
+      // Optimistic update: filter locally before server round-trip
+      presets = presets.filter((p) => p.name !== name);
       await deletePresetApi(name);
-      presets = await listPresets();
     },
   };
 }
