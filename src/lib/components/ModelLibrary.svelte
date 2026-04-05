@@ -19,7 +19,8 @@
 
   let selectedName = $state<string | null>(null);
   let isCreating = $state(false);
-  let activeTab = $state<"config" | "logs" | "proxy">("config");
+  let showProxyLog = $state(false);   // 全局代理日志面板
+  let activeTab = $state<"config" | "logs">("config");
   let availableModels = $state<ModelInfo[]>([]);
   let scanning = $state(false);
   let saving = $state(false);
@@ -89,6 +90,7 @@
   function selectInstance(name: string) {
     selectedName = name;
     isCreating = false;
+    showProxyLog = false;
     const cfg = savedInstances.find((i) => i.name === name);
     if (cfg) loadFormFrom(cfg);
   }
@@ -96,6 +98,7 @@
   function startCreate() {
     isCreating = true;
     selectedName = null;
+    showProxyLog = false;
     editName = "";
     editModelPath = "";
     editMode = "server";
@@ -260,11 +263,35 @@
         </div>
       {/if}
     </div>
+
+    <!-- 左侧底部：全局代理日志入口 -->
+    <div class="panel-footer">
+      <button
+        class="proxy-log-btn"
+        class:active={showProxyLog}
+        onclick={() => { showProxyLog = !showProxyLog; selectedName = null; isCreating = false; }}
+      >
+        <span class="proxy-dot" class:has-logs={proxyStore.logs.length > 0}></span>
+        代理日志
+        {#if proxyStore.logs.length > 0}
+          <span class="proxy-count">{proxyStore.logs.length}</span>
+        {/if}
+      </button>
+    </div>
   </div>
 
   <!-- ── Right: Config / Log panel ────────────────────────────────────────── -->
   <div class="panel-right">
-    {#if !selectedName && !isCreating}
+    {#if showProxyLog}
+      <!-- 全局代理日志 -->
+      <div class="log-area">
+        <div class="log-toolbar">
+          <span class="log-label">代理转发日志（全局）</span>
+          <button class="btn-ghost-sm" onclick={() => proxyStore.clearLogs()}>清空</button>
+        </div>
+        <LogTerminal logs={proxyLogLines} />
+      </div>
+    {:else if !selectedName && !isCreating}
       <div class="empty-state">
         <div class="empty-icon">⬡</div>
         <div class="empty-msg">选择或创建一个实例</div>
@@ -274,7 +301,6 @@
       <div class="tabs">
         <button class="tab" class:active={activeTab === "config"} onclick={() => activeTab = "config"}>配置</button>
         <button class="tab" class:active={activeTab === "logs"}   onclick={() => activeTab = "logs"}>日志</button>
-        <button class="tab" class:active={activeTab === "proxy"}  onclick={() => activeTab = "proxy"}>代理日志</button>
         <div class="tab-spacer"></div>
 
         <!-- Actions -->
@@ -437,16 +463,6 @@
             <LogTerminal logs={selectedLogs} />
           {/if}
         </div>
-
-      <!-- Proxy Log Tab -->
-      {:else if activeTab === "proxy"}
-        <div class="log-area">
-          <div class="log-toolbar">
-            <span class="log-label">代理转发日志</span>
-            <button class="btn-ghost-sm" onclick={() => proxyStore.clearLogs()}>清空</button>
-          </div>
-          <LogTerminal logs={proxyLogLines} />
-        </div>
       {/if}
     {/if}
   </div>
@@ -574,6 +590,56 @@
 .inst-status {
   font-size: 10px;
   flex-shrink: 0;
+}
+
+/* ── Left Panel Footer ── */
+.panel-footer {
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.proxy-log-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: none;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: background 0.12s, color 0.12s;
+  text-align: left;
+}
+.proxy-log-btn:hover { background: var(--bg-hover); color: var(--text-secondary); }
+.proxy-log-btn.active {
+  background: rgba(59,130,246,0.09);
+  border-color: rgba(59,130,246,0.2);
+  color: var(--text-base);
+}
+
+.proxy-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.proxy-dot.has-logs { background: var(--accent); }
+
+.proxy-count {
+  margin-left: auto;
+  font-size: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 0 5px;
+  line-height: 16px;
+  color: var(--text-muted);
 }
 
 /* ── Right Panel ── */
