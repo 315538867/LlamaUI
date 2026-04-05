@@ -5,8 +5,6 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 
 use super::config_store::LaunchConfig;
 use super::llama_detector;
