@@ -77,6 +77,7 @@ export function getConfigStore() {
     },
 
     async savePreset(preset: Preset) {
+      const prev = presets;
       // Optimistic update: replace in-place or append
       const idx = presets.findIndex((p) => p.name === preset.name);
       if (idx >= 0) {
@@ -84,13 +85,24 @@ export function getConfigStore() {
       } else {
         presets = [...presets, preset];
       }
-      await savePresetApi(preset);
+      try {
+        await savePresetApi(preset);
+      } catch (e) {
+        presets = prev; // rollback on failure
+        throw e;
+      }
     },
 
     async deletePreset(name: string) {
+      const prev = presets;
       // Optimistic update: filter locally before server round-trip
       presets = presets.filter((p) => p.name !== name);
-      await deletePresetApi(name);
+      try {
+        await deletePresetApi(name);
+      } catch (e) {
+        presets = prev; // rollback on failure
+        throw e;
+      }
     },
   };
 }

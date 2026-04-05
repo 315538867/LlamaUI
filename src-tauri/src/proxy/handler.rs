@@ -250,7 +250,7 @@ pub async fn handle_passthrough(
         .unwrap_or_else(|| "/".into());
     let target_url = format!("{}{}", target.trim_end_matches('/'), path_and_query);
 
-    let body_bytes = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
+    let body_bytes = match axum::body::to_bytes(req.into_body(), 64 * 1024 * 1024).await {
         Ok(b) => b,
         Err(e) => return (StatusCode::BAD_REQUEST, format!("read body: {}", e)).into_response(),
     };
