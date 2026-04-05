@@ -2,7 +2,7 @@ use axum::{routing::post, Router};
 use reqwest::Client;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
-use tokio::task::JoinHandle;
+use tauri::async_runtime::JoinHandle;
 use tower_http::cors::{Any, CorsLayer};
 
 use super::handler::{handle_passthrough, handle_responses};
@@ -30,7 +30,7 @@ impl ProxyConfig {
 
 /// 启动代理服务器，返回 JoinHandle（用于 Tauri 命令控制）
 pub fn start(config: ProxyConfig) -> JoinHandle<()> {
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         run_server(config).await;
     })
 }

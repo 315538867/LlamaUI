@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use serde_json::{json, Value};
 use tauri::State;
-use tokio::task::JoinHandle;
+use tauri::async_runtime::JoinHandle;
 
 use crate::proxy::server::{start, ProxyConfig};
 use crate::services::config_store::ConfigStore;
