@@ -304,8 +304,8 @@
 
           <!-- Instance name -->
           <div class="field-row">
-            <label class="field-label">实例名称</label>
-            <input class="field-input" type="text" bind:value={editName}
+            <label class="field-label" for="edit-name">实例名称</label>
+            <input id="edit-name" class="field-input" type="text" bind:value={editName}
               placeholder="my-model（作为 Codex model 字段）"
               disabled={!isCreating}
             />
@@ -314,17 +314,17 @@
 
           <!-- Model path -->
           <div class="field-row">
-            <label class="field-label">模型文件</label>
+            <label class="field-label" for="edit-model">模型文件</label>
             <div class="model-picker">
               {#if availableModels.length > 0}
-                <select class="field-select" bind:value={editModelPath}>
+                <select id="edit-model" class="field-select" bind:value={editModelPath}>
                   <option value="">— 选择模型 —</option>
                   {#each availableModels as m}
                     <option value={m.path}>{m.name} ({m.size_display})</option>
                   {/each}
                 </select>
               {:else}
-                <input class="field-input flex-1" type="text" bind:value={editModelPath}
+                <input id="edit-model" class="field-input flex-1" type="text" bind:value={editModelPath}
                   placeholder="/path/to/model.gguf" />
               {/if}
               <button class="btn-ghost" onclick={handleScan} disabled={scanning}>
@@ -335,8 +335,8 @@
 
           <!-- Mode -->
           <div class="field-row">
-            <label class="field-label">运行模式</label>
-            <select class="field-select" bind:value={editMode}>
+            <label class="field-label" for="edit-mode">运行模式</label>
+            <select id="edit-mode" class="field-select" bind:value={editMode}>
               <option value="server">server（HTTP API）</option>
               <option value="cli">cli（交互式）</option>
             </select>
@@ -346,8 +346,8 @@
 
           <!-- GPU layers -->
           <div class="field-row">
-            <label class="field-label">GPU 层数</label>
-            <input class="field-input w-num" type="number"
+            <label class="field-label" for="edit-gpu">GPU 层数</label>
+            <input id="edit-gpu" class="field-input w-num" type="number"
               value={editParams.gpu_layers ?? ""}
               oninput={(e) => { editParams.gpu_layers = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
               placeholder="99"
@@ -356,8 +356,8 @@
 
           <!-- Context size -->
           <div class="field-row">
-            <label class="field-label">上下文大小</label>
-            <input class="field-input w-num" type="number"
+            <label class="field-label" for="edit-ctx">上下文大小</label>
+            <input id="edit-ctx" class="field-input w-num" type="number"
               value={editParams.ctx_size ?? ""}
               oninput={(e) => { editParams.ctx_size = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
               placeholder="4096"
@@ -366,8 +366,8 @@
 
           <!-- Parallel -->
           <div class="field-row">
-            <label class="field-label">并发槽数</label>
-            <input class="field-input w-num" type="number"
+            <label class="field-label" for="edit-parallel">并发槽数</label>
+            <input id="edit-parallel" class="field-input w-num" type="number"
               value={editParams.parallel ?? ""}
               oninput={(e) => { editParams.parallel = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
               placeholder="1"
@@ -376,7 +376,7 @@
 
           <!-- Toggles -->
           <div class="field-row">
-            <label class="field-label">Flash Attention</label>
+            <span class="field-label">Flash Attention</span>
             <label class="toggle">
               <input type="checkbox"
                 checked={editParams.flash_attn ?? false}
@@ -387,7 +387,7 @@
           </div>
 
           <div class="field-row">
-            <label class="field-label">持续批处理</label>
+            <span class="field-label">持续批处理</span>
             <label class="toggle">
               <input type="checkbox"
                 checked={editParams.cont_batching ?? false}
@@ -399,8 +399,8 @@
 
           <!-- Instance API key -->
           <div class="field-row">
-            <label class="field-label">实例 API Key</label>
-            <input class="field-input flex-1" type="password"
+            <label class="field-label" for="edit-apikey">实例 API Key</label>
+            <input id="edit-apikey" class="field-input flex-1" type="password"
               value={editParams.api_key ?? ""}
               oninput={(e) => { editParams.api_key = (e.target as HTMLInputElement).value || null; }}
               placeholder="可选，传入 --api-key"
@@ -409,8 +409,8 @@
 
           <!-- Extra args -->
           <div class="field-row">
-            <label class="field-label">额外参数</label>
-            <input class="field-input flex-1" type="text"
+            <label class="field-label" for="edit-extra">额外参数</label>
+            <input id="edit-extra" class="field-input flex-1" type="text"
               value={editParams.extra_args ?? ""}
               oninput={(e) => { editParams.extra_args = (e.target as HTMLInputElement).value || null; }}
               placeholder="如 --no-mmap --mlock"

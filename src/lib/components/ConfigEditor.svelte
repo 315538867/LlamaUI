@@ -213,12 +213,12 @@
       <div class="section-title">代理设置</div>
       <div class="proxy-grid">
         <div class="proxy-field">
-          <label class="proxy-label">端口</label>
-          <input class="input" type="number" min="1" max="65535" bind:value={proxyPort} style="width:80px;" />
+          <label class="proxy-label" for="proxy-port">端口</label>
+          <input id="proxy-port" class="input" type="number" min="1" max="65535" bind:value={proxyPort} style="width:80px;" />
         </div>
         <div class="proxy-field">
-          <label class="proxy-label">API Key</label>
-          <input class="input flex-1" type="password" bind:value={proxyApiKey} placeholder="可选，保护代理入口" />
+          <label class="proxy-label" for="proxy-apikey">API Key</label>
+          <input id="proxy-apikey" class="input flex-1" type="password" bind:value={proxyApiKey} placeholder="可选，保护代理入口" />
         </div>
       </div>
       <div class="proxy-toggles">
