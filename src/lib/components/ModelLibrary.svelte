@@ -400,6 +400,79 @@
             />
           </div>
 
+          <!-- Threads -->
+          <div class="field-row">
+            <label class="field-label" for="edit-threads">CPU 线程</label>
+            <input id="edit-threads" class="field-input w-num" type="number"
+              value={editParams.threads ?? ""}
+              oninput={(e) => { editParams.threads = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
+              placeholder="自动"
+            />
+          </div>
+
+          <!-- Batch size -->
+          <div class="field-row">
+            <label class="field-label" for="edit-batch">批处理大小</label>
+            <input id="edit-batch" class="field-input w-num" type="number"
+              value={editParams.batch_size ?? ""}
+              oninput={(e) => { editParams.batch_size = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
+              placeholder="512"
+            />
+          </div>
+
+          <!-- uBatch size -->
+          <div class="field-row">
+            <label class="field-label" for="edit-ubatch">解码批次</label>
+            <input id="edit-ubatch" class="field-input w-num" type="number"
+              value={editParams.ubatch_size ?? ""}
+              oninput={(e) => { editParams.ubatch_size = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
+              placeholder="512"
+            />
+          </div>
+
+          <!-- KV Cache types -->
+          <div class="field-row">
+            <label class="field-label" for="edit-cache-k">KV Cache K</label>
+            <select id="edit-cache-k" class="field-select" style="flex:1;"
+              value={editParams.cache_type_k ?? "f16"}
+              onchange={(e) => { editParams.cache_type_k = (e.target as HTMLSelectElement).value === "f16" ? null : (e.target as HTMLSelectElement).value; }}
+            >
+              <option value="f16">f16（默认）</option>
+              <option value="q8_0">q8_0</option>
+              <option value="q4_0">q4_0</option>
+              <option value="q4_1">q4_1</option>
+              <option value="iq4_nl">iq4_nl</option>
+              <option value="q5_0">q5_0</option>
+              <option value="q5_1">q5_1</option>
+            </select>
+          </div>
+
+          <div class="field-row">
+            <label class="field-label" for="edit-cache-v">KV Cache V</label>
+            <select id="edit-cache-v" class="field-select" style="flex:1;"
+              value={editParams.cache_type_v ?? "f16"}
+              onchange={(e) => { editParams.cache_type_v = (e.target as HTMLSelectElement).value === "f16" ? null : (e.target as HTMLSelectElement).value; }}
+            >
+              <option value="f16">f16（默认）</option>
+              <option value="q8_0">q8_0</option>
+              <option value="q4_0">q4_0</option>
+              <option value="q4_1">q4_1</option>
+              <option value="iq4_nl">iq4_nl</option>
+              <option value="q5_0">q5_0</option>
+              <option value="q5_1">q5_1</option>
+            </select>
+          </div>
+
+          <!-- Seed -->
+          <div class="field-row">
+            <label class="field-label" for="edit-seed">随机种子</label>
+            <input id="edit-seed" class="field-input w-num" type="number"
+              value={editParams.seed ?? ""}
+              oninput={(e) => { editParams.seed = (e.target as HTMLInputElement).value === "" ? null : parseInt((e.target as HTMLInputElement).value); }}
+              placeholder="-1（随机）"
+            />
+          </div>
+
           <!-- Toggles -->
           <div class="field-row">
             <span class="field-label">Flash Attention</span>
@@ -418,6 +491,39 @@
               <input type="checkbox"
                 checked={editParams.cont_batching ?? false}
                 onchange={(e) => { editParams.cont_batching = (e.target as HTMLInputElement).checked; }}
+              />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+
+          <div class="field-row">
+            <span class="field-label">锁定内存</span>
+            <label class="toggle">
+              <input type="checkbox"
+                checked={editParams.mlock ?? false}
+                onchange={(e) => { editParams.mlock = (e.target as HTMLInputElement).checked || null; }}
+              />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+
+          <div class="field-row">
+            <span class="field-label">禁用 mmap</span>
+            <label class="toggle">
+              <input type="checkbox"
+                checked={editParams.no_mmap ?? false}
+                onchange={(e) => { editParams.no_mmap = (e.target as HTMLInputElement).checked || null; }}
+              />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+
+          <div class="field-row">
+            <span class="field-label">禁用 KV 卸载</span>
+            <label class="toggle">
+              <input type="checkbox"
+                checked={editParams.no_kv_offload ?? false}
+                onchange={(e) => { editParams.no_kv_offload = (e.target as HTMLInputElement).checked || null; }}
               />
               <span class="toggle-track"></span>
             </label>
