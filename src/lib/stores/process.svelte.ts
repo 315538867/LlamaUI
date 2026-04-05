@@ -2,6 +2,9 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { InstanceMap, InstanceInfo, LogEvent } from "../types";
 import { getAllInstances } from "../services/tauri-bridge";
 
+const LOG_MAX_SIZE = 1000;
+const LOG_TRIM_SIZE = 500;
+
 let instances = $state<InstanceMap>({});
 
 // Per-instance logs: name → log entries
@@ -36,7 +39,7 @@ export function getInstanceStore() {
       const { instance, stream, line } = event.payload;
       if (!logs[instance]) logs[instance] = [];
       const bucket = logs[instance];
-      if (bucket.length >= 1000) logs[instance] = bucket.slice(500);
+      if (bucket.length >= LOG_MAX_SIZE) logs[instance] = bucket.slice(LOG_TRIM_SIZE);
       logs[instance].push({ stream, line, ts: Date.now() });
       parsePerfLine(line);
     }).then((fn) => _unlisteners.push(fn));

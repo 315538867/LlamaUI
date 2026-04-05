@@ -1,6 +1,9 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { ProxyLogEvent } from "../types";
 
+const LOG_MAX_SIZE = 500;
+const LOG_TRIM_SIZE = 250;
+
 let proxyLogs = $state<ProxyLogEvent[]>([]);
 let _initialized = false;
 let _unlisteners: UnlistenFn[] = [];
@@ -10,7 +13,7 @@ export function getProxyStore() {
     _initialized = true;
 
     listen<ProxyLogEvent>("proxy://log", (event) => {
-      if (proxyLogs.length >= 500) proxyLogs = proxyLogs.slice(250);
+      if (proxyLogs.length >= LOG_MAX_SIZE) proxyLogs = proxyLogs.slice(LOG_TRIM_SIZE);
       proxyLogs.push(event.payload);
     }).then((fn) => _unlisteners.push(fn));
   }
