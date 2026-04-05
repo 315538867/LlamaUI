@@ -32,6 +32,7 @@ pub struct InstanceInfo {
 }
 
 impl InstanceInfo {
+    #[allow(dead_code)]
     fn stopped(config: InstanceConfig) -> Self {
         Self { config, status: InstanceStatus::Stopped, port: None, pid: None, started_at: None }
     }
