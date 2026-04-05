@@ -53,7 +53,25 @@ GitHub Releases 提供预构建安装包（由 GitHub Actions 自动构建）：
 - **Windows**：`LlamaUI_x.x.x_x64_en-US.msi` 或 `LlamaUI_x.x.x_x64-setup.exe`
 - **macOS**：`LlamaUI_x.x.x_aarch64.dmg`
 
-> macOS 安装包未签名，首次打开需在「系统设置 → 隐私与安全性」中允许运行。
+### macOS 安装说明
+
+由于应用未签名，macOS Gatekeeper 会阻止运行并提示"已损坏"。请使用以下任一方法：
+
+**方法一：右键打开（推荐）**
+1. 右键点击 `LlamaUI.app`
+2. 选择"打开"
+3. 在弹出的对话框中点击"打开"按钮
+
+**方法二：移除隔离属性（最彻底）**
+```bash
+xattr -cr /Applications/LlamaUI.app
+```
+执行后可正常双击打开。
+
+**方法三：系统设置**
+1. 尝试打开应用（会被阻止）
+2. 打开「系统设置 → 隐私与安全性」
+3. 找到被阻止的应用，点击"仍要打开"
 
 ## 环境要求
 
