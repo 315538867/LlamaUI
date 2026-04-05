@@ -180,6 +180,18 @@
     />
   </div>
 
+  {#if editMode === "server"}
+    <div class="field-row" style="align-items: flex-start;">
+      <label class="field-label" for="edit-system-prompt" style="padding-top: 6px;">[REDACTED]</label>
+      <textarea id="edit-system-prompt" class="field-textarea"
+        value={editParams.system_prompt ?? ""}
+        oninput={(e) => setParam("system_prompt", (e.target as HTMLTextAreaElement).value || null)}
+        placeholder="你是一个有帮助的 AI 助手"
+        rows="3"
+      ></textarea>
+    </div>
+  {/if}
+
   <div class="field-row">
     <span class="field-label">Flash Attention</span>
     <label class="toggle">
@@ -323,6 +335,22 @@
 .field-input:focus { border-color: var(--accent); }
 .field-input.flex-1 { flex: 1; }
 .field-input.w-num { width: 80px; }
+
+.field-textarea {
+  padding: 6px 8px;
+  font-size: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-base);
+  outline: none;
+  transition: border-color 0.12s;
+  resize: vertical;
+  flex: 1;
+  font-family: inherit;
+  line-height: 1.4;
+}
+.field-textarea:focus { border-color: var(--accent); }
 
 .field-select {
   height: 26px;
