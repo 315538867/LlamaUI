@@ -116,11 +116,12 @@ pub fn run_stdio_server(config_store: Arc<ConfigStore>) {
         let _ = out.flush();
     }
 
-    // Clean up child process when stdin closes (MCP host disconnected)
-    if let Ok(mut guard) = child.lock() {
-        if let Some(ref mut c) = *guard {
-            let _ = c.kill();
-        }
+    // Clean up child process when stdin closes (MCP host disconnected).
+    // Use into_inner() to recover even if the mutex was poisoned by a prior panic.
+    let mut guard = child.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(ref mut c) = *guard {
+        let _ = c.kill();
+        let _ = c.wait(); // reap to avoid zombie
     };
 }
 
@@ -214,7 +215,8 @@ fn handle_tool_call(
         }
 
         "llamaui_get_config" => {
-            let config = config_store.load_config();
+            let mut config = config_store.load_config();
+            config.proxy_api_key = None; // never expose the proxy API key over MCP
             Ok(serde_json::to_string_pretty(&config).unwrap_or_else(|_| "{}".into()))
         }
 
@@ -236,7 +238,26 @@ fn handle_tool_call(
             let llama_dir = config.llama_dir.ok_or("未配置 llama.cpp 路径")?;
             let gpu_layers = arguments.get("gpu_layers").and_then(|v| v.as_i64()).unwrap_or(99);
             let ctx_size = arguments.get("ctx_size").and_then(|v| v.as_i64()).unwrap_or(4096);
-            let port = arguments.get("port").and_then(|v| v.as_i64()).unwrap_or(8000);
+
+            // Use requested port if provided and available, otherwise find a free port
+            let port: u16 = if let Some(p) = arguments.get("port").and_then(|v| v.as_i64()) {
+                let p = p as u16;
+                match std::net::TcpListener::bind(format!("127.0.0.1:{}", p)) {
+                    Ok(_) => p,
+                    Err(_) => {
+                        // Requested port is in use — find a free one
+                        std::net::TcpListener::bind("127.0.0.1:0")
+                            .and_then(|l| l.local_addr())
+                            .map(|a| a.port())
+                            .unwrap_or(18000)
+                    }
+                }
+            } else {
+                std::net::TcpListener::bind("127.0.0.1:0")
+                    .and_then(|l| l.local_addr())
+                    .map(|a| a.port())
+                    .unwrap_or(18000)
+            };
 
             let bin_path = crate::services::llama_detector::get_binary_path(&llama_dir, "llama-server");
             if !bin_path.exists() {

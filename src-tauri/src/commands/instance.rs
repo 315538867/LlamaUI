@@ -26,8 +26,10 @@ pub async fn start_instance(
     // Start the process
     let port = registry.start(app, &llama_dir, config.clone()).await?;
 
-    // Register in proxy routing table
-    proxy_state.register(&config.name, port);
+    // Register in proxy routing table (only for server mode with a valid port)
+    if port > 0 {
+        proxy_state.register(&config.name, port);
+    }
 
     Ok(())
 }
