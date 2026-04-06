@@ -51,7 +51,7 @@ struct InstanceState {
 
 pub struct InstanceRegistry {
     instances: Arc<Mutex<HashMap<String, InstanceState>>>,
-    app_handle: Arc<Mutex<Option<AppHandle>>>,
+    app_handle: std::sync::OnceLock<AppHandle>,
 }
 
 impl Default for InstanceRegistry {
@@ -62,7 +62,7 @@ impl InstanceRegistry {
     pub fn new() -> Self {
         Self {
             instances: Arc::new(Mutex::new(HashMap::new())),
-            app_handle: Arc::new(Mutex::new(None)),
+            app_handle: std::sync::OnceLock::new(),
         }
     }
 
@@ -81,7 +81,7 @@ impl InstanceRegistry {
         llama_dir: &str,
         config: InstanceConfig,
     ) -> Result<u16, String> {
-        *self.app_handle.lock().await = Some(app.clone());
+        self.app_handle.get_or_init(|| app.clone());
 
         // Stop any existing instance with the same name first
         self.stop(&config.name).await.ok();
@@ -383,7 +383,7 @@ impl InstanceRegistry {
         guard.remove(name);
         drop(guard);
 
-        if let Some(app) = self.app_handle.lock().await.as_ref() {
+        if let Some(app) = self.app_handle.get() {
             self.emit_instances(app).await;
         }
         Ok(())
@@ -401,10 +401,14 @@ impl InstanceRegistry {
 
     /// Snapshot of all current instances (including stopped ones stored in config).
     pub async fn get_all(&self) -> HashMap<String, InstanceInfo> {
-        let guard = self.instances.lock().await;
-        let mut map = HashMap::new();
-        for (k, v) in guard.iter() {
-            map.insert(k.clone(), v.info.lock().await.clone());
+        let info_refs: Vec<Arc<Mutex<InstanceInfo>>> = {
+            let guard = self.instances.lock().await;
+            guard.values().map(|s| Arc::clone(&s.info)).collect()
+        };
+        let mut map = HashMap::with_capacity(info_refs.len());
+        for info in &info_refs {
+            let snapshot = info.lock().await.clone();
+            map.insert(snapshot.config.name.clone(), snapshot);
         }
         map
     }
@@ -432,8 +436,9 @@ async fn maybe_flip_to_running(
     if !is_server { return; }
     let mut guard = info.lock().await;
     if guard.status != InstanceStatus::Starting { return; }
-    let lower = line.to_lowercase();
-    if lower.contains("listening") || lower.contains("server listening") {
+    let bytes = line.as_bytes();
+    let found = bytes.windows(9).any(|w| w.eq_ignore_ascii_case(b"listening"));
+    if found {
         guard.status = InstanceStatus::Running;
         drop(guard);
         emit_all_instances(instances, app).await;
@@ -477,10 +482,15 @@ async fn emit_all_instances(
     instances: &Arc<Mutex<HashMap<String, InstanceState>>>,
     app: &AppHandle,
 ) {
-    let guard = instances.lock().await;
-    let mut map: HashMap<String, InstanceInfo> = HashMap::new();
-    for (k, v) in guard.iter() {
-        map.insert(k.clone(), v.info.lock().await.clone());
+    // 先收集所有 info Arc，释放外层锁，再逐个读取子锁，避免嵌套持锁
+    let info_refs: Vec<Arc<Mutex<InstanceInfo>>> = {
+        let guard = instances.lock().await;
+        guard.values().map(|s| Arc::clone(&s.info)).collect()
+    };
+    let mut map: HashMap<String, InstanceInfo> = HashMap::with_capacity(info_refs.len());
+    for info in &info_refs {
+        let snapshot = info.lock().await.clone();
+        map.insert(snapshot.config.name.clone(), snapshot);
     }
     app.emit("llama://instances", &map).ok();
 }

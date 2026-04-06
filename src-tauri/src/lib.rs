@@ -48,12 +48,13 @@ pub fn run() {
                 }
                 let registry = window.state::<Arc<InstanceRegistry>>();
                 let ps = window.state::<Arc<ProxyState>>();
-                let registry_clone = Arc::clone(&registry);
-                let ps_clone = Arc::clone(&ps);
-                tauri::async_runtime::spawn(async move {
-                    registry_clone.stop_all().await;
+                tauri::async_runtime::spawn({
+                    let registry = Arc::clone(&registry);
+                    async move {
+                        registry.stop_all().await;
+                    }
                 });
-                ps_clone.stop();
+                ps.stop();
             }
         })
         .invoke_handler(tauri::generate_handler![

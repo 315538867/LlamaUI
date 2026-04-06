@@ -43,7 +43,7 @@ fn scan_recursive(dir: &Path, models: &mut Vec<ModelInfo>, depth: u32) {
         if path.is_dir() {
             scan_recursive(&path, models, depth + 1);
         } else if let Some(ext) = path.extension() {
-            if ext.to_str().unwrap_or("").to_lowercase() == "gguf" {
+            if ext.eq_ignore_ascii_case("gguf") {
                 if let Some(info) = parse_model_file(&path) {
                     models.push(info);
                 }
@@ -76,8 +76,7 @@ pub fn parse_model_file(path: &Path) -> Option<ModelInfo> {
 }
 
 fn infer_quantization(name: &str) -> Option<String> {
-    let upper = name.to_uppercase();
-    let quant_patterns = [
+    const PATTERNS: &[&str] = &[
         "Q2_K", "Q3_K_S", "Q3_K_M", "Q3_K_L",
         "Q4_0", "Q4_1", "Q4_K_S", "Q4_K_M",
         "Q5_0", "Q5_1", "Q5_K_S", "Q5_K_M",
@@ -86,13 +85,10 @@ fn infer_quantization(name: &str) -> Option<String> {
         "IQ3_XXS", "IQ3_XS", "IQ3_S", "IQ3_M",
         "IQ4_NL", "IQ4_XS",
     ];
-
-    for pattern in quant_patterns {
-        if upper.contains(pattern) {
-            return Some(pattern.to_string());
-        }
-    }
-    None
+    PATTERNS.iter()
+        .find(|&&p| name.as_bytes().windows(p.len())
+            .any(|w| w.eq_ignore_ascii_case(p.as_bytes())))
+        .map(|&p| p.to_string())
 }
 
 fn format_size(bytes: u64) -> String {
