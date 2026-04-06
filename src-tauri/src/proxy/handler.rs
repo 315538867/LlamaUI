@@ -47,13 +47,18 @@ fn emit_log(cfg: &ProxyConfig, level: &str, msg: impl Into<String>) {
     cfg.app_handle.emit("proxy://log", &event).ok();
 }
 
+fn error_resp(status: StatusCode, error_type: &str, message: impl Into<String>) -> Response {
+    let message = message.into();
+    (status, Json(json!({ "error": { "type": error_type, "message": message } }))).into_response()
+}
+
 // ── Auth helper ───────────────────────────────────────────────────────────────
 
 /// Returns `None` if auth passes (no key configured, or header matches).
 /// Returns `Some(Response)` with 401 if auth fails.
 fn check_auth(cfg: &ProxyConfig, headers: &HeaderMap) -> Option<Response> {
-    let expected = cfg.api_key.read().unwrap().clone();
-    let Some(expected_key) = expected else {
+    let expected = cfg.api_key.load();
+    let Some(ref expected_key) = **expected else {
         return None; // No proxy key configured — open access
     };
 
@@ -68,15 +73,8 @@ fn check_auth(cfg: &ProxyConfig, headers: &HeaderMap) -> Option<Response> {
     }
 
     emit_log(cfg, "warn", "认证失败：Authorization header 无效");
-    Some((
-        StatusCode::UNAUTHORIZED,
-        Json(json!({
-            "error": {
-                "type": "authentication_error",
-                "message": "Invalid API key. Provide a valid Bearer token."
-            }
-        })),
-    ).into_response())
+    Some(error_resp(StatusCode::UNAUTHORIZED, "authentication_error",
+        "Invalid API key. Provide a valid Bearer token."))
 }
 
 // ── Route resolver ────────────────────────────────────────────────────────────
@@ -84,12 +82,11 @@ fn check_auth(cfg: &ProxyConfig, headers: &HeaderMap) -> Option<Response> {
 /// Look up which llama.cpp port handles `model_name`.
 /// Returns `Err(Response)` with 404 if not found.
 fn resolve_route(cfg: &ProxyConfig, model_name: &str) -> Result<String, Response> {
-    let routes = cfg.routes.read().unwrap();
-    if let Some(&port) = routes.get(model_name) {
-        return Ok(format!("http://127.0.0.1:{}", port));
+    if let Some(port) = cfg.routes.get(model_name) {
+        return Ok(format!("http://127.0.0.1:{}", *port));
     }
     // Build available-models list for the error message
-    let available: Vec<&str> = routes.keys().map(|s| s.as_str()).collect();
+    let available: Vec<String> = cfg.routes.iter().map(|r| r.key().clone()).collect();
     let msg = if available.is_empty() {
         format!("没有正在运行的模型实例。请先启动一个实例。")
     } else {
@@ -130,10 +127,7 @@ pub async fn handle_responses(
 
     if model_name.is_empty() {
         emit_log(&cfg, "warn", "请求缺少 model 字段");
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": { "type": "invalid_request", "message": "Missing 'model' field in request body." } })),
-        ).into_response();
+        return error_resp(StatusCode::BAD_REQUEST, "invalid_request", "Missing 'model' field in request body.");
     }
 
     // 3. Route
@@ -178,31 +172,37 @@ pub async fn handle_responses(
     emit_log(&cfg, "info", format!("[←] 200 OK  model={}", model_name));
 
     // 6. Stream response back
-    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(64);
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(128);
 
     tokio::spawn(async move {
         let mut converter = SseConverter::new();
         let _ = tx.send(Ok(Bytes::from(converter.created_event()))).await;
 
         let mut stream = upstream.bytes_stream();
-        let mut buf = String::new();
+        let mut buf = Vec::with_capacity(4096);
 
         while let Some(chunk) = stream.next().await {
             let chunk = match chunk { Ok(c) => c, Err(_) => break };
-            buf.push_str(&String::from_utf8_lossy(&chunk));
+            buf.extend_from_slice(&chunk);
 
-            while let Some(pos) = buf.find('\n') {
-                let line = buf[..pos].trim_end_matches('\r').to_string();
-                buf = buf[pos + 1..].to_string();
+            while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
+                let line = String::from_utf8_lossy(&buf[..pos])
+                    .trim_end_matches('\r')
+                    .to_string();
+                buf.drain(..=pos);
+
                 for event in converter.feed_line(&line) {
                     if tx.send(Ok(Bytes::from(event))).await.is_err() { return; }
                 }
             }
         }
 
-        if !buf.trim().is_empty() {
-            for event in converter.feed_line(buf.trim()) {
-                let _ = tx.send(Ok(Bytes::from(event))).await;
+        if !buf.is_empty() {
+            let line = String::from_utf8_lossy(&buf).trim().to_string();
+            if !line.is_empty() {
+                for event in converter.feed_line(&line) {
+                    let _ = tx.send(Ok(Bytes::from(event))).await;
+                }
             }
         }
     });
@@ -227,20 +227,16 @@ pub async fn handle_passthrough(
     if let Some(err) = check_auth(&cfg, &headers) { return err; }
 
     // Find first running instance
-    let target = {
-        let routes = cfg.routes.read().unwrap();
-        routes.values().next().map(|&port| format!("http://127.0.0.1:{}", port))
-    };
+    let target: Option<String> = cfg.routes.iter()
+        .next()
+        .map(|r| format!("http://127.0.0.1:{}", r.value()));
 
     let target = match target {
         Some(t) => t,
         None => {
             let msg = "没有正在运行的模型实例";
             emit_log(&cfg, "error", msg);
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({ "error": { "type": "no_instance", "message": msg } })),
-            ).into_response();
+            return error_resp(StatusCode::SERVICE_UNAVAILABLE, "no_instance", msg);
         }
     };
 
@@ -250,10 +246,8 @@ pub async fn handle_passthrough(
         .unwrap_or_else(|| "/".into());
     let target_url = format!("{}{}", target.trim_end_matches('/'), path_and_query);
 
-    let body_bytes = match axum::body::to_bytes(req.into_body(), 64 * 1024 * 1024).await {
-        Ok(b) => b,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("read body: {}", e)).into_response(),
-    };
+    let body_stream = req.into_body().into_data_stream();
+    let reqwest_body = reqwest::Body::wrap_stream(body_stream);
 
     let mut rb = cfg.client.request(
         reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap_or(reqwest::Method::GET),
@@ -266,7 +260,7 @@ pub async fn handle_passthrough(
         }
     }
 
-    let upstream = match rb.body(body_bytes).send().await {
+    let upstream = match rb.body(reqwest_body).send().await {
         Ok(r) => r,
         Err(e) => return (StatusCode::BAD_GATEWAY, format!("upstream error: {}", e)).into_response(),
     };

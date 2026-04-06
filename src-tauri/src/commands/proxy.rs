@@ -20,6 +20,12 @@ impl ProxyState {
         }
     }
 
+    fn with_config<F: FnOnce(&ProxyConfig)>(&self, f: F) {
+        if let Ok(guard) = self.config.lock() {
+            if let Some(ref cfg) = *guard { f(cfg); }
+        }
+    }
+
     /// Start proxy server at app launch with empty routes table.
     pub fn start_at_launch(
         &self,
@@ -37,24 +43,12 @@ impl ProxyState {
 
     /// Register an instance route (called after llama.cpp starts).
     pub fn register(&self, name: &str, port: u16) {
-        if let Ok(guard) = self.config.lock() {
-            if let Some(ref cfg) = *guard {
-                if let Ok(mut routes) = cfg.routes.write() {
-                    routes.insert(name.to_string(), port);
-                }
-            }
-        }
+        self.with_config(|cfg| { cfg.routes.insert(name.to_string(), port); });
     }
 
     /// Unregister an instance route (called after llama.cpp stops).
     pub fn unregister(&self, name: &str) {
-        if let Ok(guard) = self.config.lock() {
-            if let Some(ref cfg) = *guard {
-                if let Ok(mut routes) = cfg.routes.write() {
-                    routes.remove(name);
-                }
-            }
-        }
+        self.with_config(|cfg| { cfg.routes.remove(name); });
     }
 
     /// Stop proxy server (called on app shutdown).
@@ -86,10 +80,10 @@ pub fn restart_proxy(
     config_store.save_config(&app_config)?;
 
     // Snapshot current routes so they survive the restart
-    let existing_routes = {
+    let existing_routes: Vec<(String, u16)> = {
         let guard = state.config.lock().map_err(|e| e.to_string())?;
         guard.as_ref()
-            .and_then(|cfg| cfg.routes.read().ok().map(|r| r.clone()))
+            .map(|cfg| cfg.routes.iter().map(|r| (r.key().clone(), *r.value())).collect())
             .unwrap_or_default()
     };
 
@@ -100,9 +94,8 @@ pub fn restart_proxy(
 
     // Start new server with same routes
     let new_config = ProxyConfig::new(port, cors, allow_external, api_key, app_handle);
-    {
-        let mut routes = new_config.routes.write().map_err(|e| e.to_string())?;
-        *routes = existing_routes;
+    for (name, port) in existing_routes {
+        new_config.routes.insert(name, port);
     }
     let handle = start(new_config.clone());
     if let Ok(mut h) = state.handle.lock() { *h = Some(handle); }
@@ -118,9 +111,9 @@ pub fn get_proxy_status(state: State<Arc<ProxyState>>) -> Value {
 
     match guard.as_ref().and_then(|g| g.as_ref()) {
         Some(cfg) if running => {
-            let routes: Vec<Value> = cfg.routes.read().ok()
-                .map(|r| r.iter().map(|(n, p)| json!({ "name": n, "port": p })).collect())
-                .unwrap_or_default();
+            let routes: Vec<Value> = cfg.routes.iter()
+                .map(|r| json!({ "name": r.key(), "port": r.value() }))
+                .collect();
             json!({
                 "running": true,
                 "port": cfg.port,

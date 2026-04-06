@@ -1,10 +1,11 @@
 use axum::{routing::post, Router};
 use reqwest::Client;
-use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use arc_swap::ArcSwap;
+use dashmap::DashMap;
 use tauri::{AppHandle, async_runtime::JoinHandle};
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 
 use super::handler::{handle_passthrough, handle_responses};
 
@@ -12,9 +13,9 @@ use super::handler::{handle_passthrough, handle_responses};
 pub struct ProxyConfig {
     pub port: u16,
     /// instance_name → llama.cpp port
-    pub routes: Arc<RwLock<HashMap<String, u16>>>,
+    pub routes: Arc<DashMap<String, u16>>,
     /// proxy-level API key (validates incoming Codex requests)
-    pub api_key: Arc<RwLock<Option<String>>>,
+    pub api_key: Arc<ArcSwap<Option<String>>>,
     pub client: Arc<Client>,
     pub cors: bool,
     pub allow_external: bool,
@@ -31,9 +32,16 @@ impl ProxyConfig {
     ) -> Self {
         Self {
             port,
-            routes: Arc::new(RwLock::new(HashMap::new())),
-            api_key: Arc::new(RwLock::new(api_key)),
-            client: Arc::new(Client::new()),
+            routes: Arc::new(DashMap::new()),
+            api_key: Arc::new(ArcSwap::from_pointee(api_key)),
+            client: Arc::new(
+                Client::builder()
+                    .pool_max_idle_per_host(4)
+                    .pool_idle_timeout(std::time::Duration::from_secs(30))
+                    .connect_timeout(std::time::Duration::from_secs(5))
+                    .build()
+                    .expect("reqwest client build failed"),
+            ),
             cors,
             allow_external,
             app_handle,
@@ -56,10 +64,8 @@ async fn run_server(config: ProxyConfig) {
 
     let app = if config.cors {
         router.layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
+            CorsLayer::permissive()
+                .max_age(std::time::Duration::from_secs(3600)),
         )
     } else {
         router
