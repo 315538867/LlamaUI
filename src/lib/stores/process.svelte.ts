@@ -10,18 +10,44 @@ let instances = $state<InstanceMap>({});
 // Per-instance logs: name → log entries
 let logs = $state<Record<string, { stream: string; line: string; ts: number }[]>>({});
 
-// Last-seen perf metrics (from any instance)
-let tokensPerSec = $state<number | null>(null);
-let promptTps = $state<number | null>(null);
+// ── Per-instance perf stats ───────────────────────────────────────────────────
 
-const RE_EVAL   = /(?:llama_print_timings|llama_perf_context_print):\s+eval time[^,]+,\s*([\d.]+)\s+tokens per second/;
-const RE_PROMPT = /(?:llama_print_timings|llama_perf_context_print):\s+prompt eval time[^,]+,\s*([\d.]+)\s+tokens per second/;
+export interface InstancePerfStats {
+  evalTps: number | null;       // 最近一次推理输出速度 (tokens/s)
+  promptTps: number | null;     // 最近一次 prompt 处理速度 (tokens/s)
+  totalPromptTokens: number;    // 累计输入 token 数
+  totalEvalTokens: number;      // 累计输出 token 数
+}
 
-function parsePerfLine(line: string) {
+let perfStats = $state<Record<string, InstancePerfStats>>({});
+
+// 匹配格式：
+//   llama_print_timings:        eval time = xxx ms / 512 tokens (..., 63.0 tokens per second)
+//   llama_print_timings: prompt eval time = xxx ms / 128 tokens (..., 244.6 tokens per second)
+const RE_EVAL = /(?:llama_print_timings|llama_perf_context_print):\s+eval time[^/]+\/\s*(\d+)\s+tokens[^,]+,\s*([\d.]+)\s+tokens per second/;
+const RE_PROMPT = /(?:llama_print_timings|llama_perf_context_print):\s+prompt eval time[^/]+\/\s*(\d+)\s+tokens[^,]+,\s*([\d.]+)\s+tokens per second/;
+
+function ensurePerf(name: string): InstancePerfStats {
+  if (!perfStats[name]) {
+    perfStats[name] = { evalTps: null, promptTps: null, totalPromptTokens: 0, totalEvalTokens: 0 };
+  }
+  return perfStats[name];
+}
+
+function parsePerfLine(instanceName: string, line: string) {
   const em = RE_EVAL.exec(line);
-  if (em) { tokensPerSec = parseFloat(em[1]); return; }
+  if (em) {
+    const p = ensurePerf(instanceName);
+    p.totalEvalTokens += parseInt(em[1], 10);
+    p.evalTps = parseFloat(em[2]);
+    return;
+  }
   const pm = RE_PROMPT.exec(line);
-  if (pm) { promptTps = parseFloat(pm[1]); }
+  if (pm) {
+    const p = ensurePerf(instanceName);
+    p.totalPromptTokens += parseInt(pm[1], 10);
+    p.promptTps = parseFloat(pm[2]);
+  }
 }
 
 let _initialized = false;
@@ -33,6 +59,10 @@ export function getInstanceStore() {
 
     listen<InstanceMap>("llama://instances", (event) => {
       instances = event.payload;
+      // 清理已不存在实例的统计（实例停止后移除）
+      for (const name of Object.keys(perfStats)) {
+        if (!event.payload[name]) delete perfStats[name];
+      }
     }).then((fn) => _unlisteners.push(fn));
 
     listen<LogEvent>("llama://log", (event) => {
@@ -41,7 +71,7 @@ export function getInstanceStore() {
       const bucket = logs[instance];
       if (bucket.length >= LOG_MAX_SIZE) logs[instance] = bucket.slice(LOG_TRIM_SIZE);
       logs[instance].push({ stream, line, ts: Date.now() });
-      parsePerfLine(line);
+      parsePerfLine(instance, line);
     }).then((fn) => _unlisteners.push(fn));
 
     // Hydrate from backend on first load
@@ -51,8 +81,25 @@ export function getInstanceStore() {
   return {
     get instances() { return instances; },
     get logs() { return logs; },
-    get tokensPerSec() { return tokensPerSec; },
-    get promptTps() { return promptTps; },
+    get perfStats() { return perfStats; },
+
+    // 向后兼容：取最近有数据的实例的 evalTps
+    get tokensPerSec(): number | null {
+      for (const s of Object.values(perfStats)) {
+        if (s.evalTps != null) return s.evalTps;
+      }
+      return null;
+    },
+    get promptTps(): number | null {
+      for (const s of Object.values(perfStats)) {
+        if (s.promptTps != null) return s.promptTps;
+      }
+      return null;
+    },
+
+    getInstancePerf(name: string): InstancePerfStats | null {
+      return perfStats[name] ?? null;
+    },
 
     runningCount(): number {
       return Object.values(instances).filter((i: InstanceInfo) => i.status === "running").length;
