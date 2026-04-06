@@ -181,7 +181,7 @@
   </div>
 
   {#if editMode === "server"}
-    <div class="field-row" style="align-items: flex-start;">
+    <div class="field-row" style="align-items: flex-start; min-height: 0;">
       <label class="field-label" for="edit-system-prompt" style="padding-top: 6px;">系统提示</label>
       <textarea id="edit-system-prompt" class="field-textarea"
         value={editParams.system_prompt ?? ""}
@@ -347,6 +347,8 @@
   transition: border-color 0.12s;
   resize: none;
   flex: 1;
+  height: 72px;
+  min-height: 72px;
   font-family: inherit;
   line-height: 1.4;
 }
