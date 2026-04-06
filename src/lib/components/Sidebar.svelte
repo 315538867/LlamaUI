@@ -11,6 +11,7 @@
   const navItems: { id: PageId; label: string }[] = [
     { id: "instances", label: "模型实例" },
     { id: "models",    label: "模型库" },
+    { id: "proxy",     label: "代理"   },
     { id: "settings",  label: "设置"   },
   ];
 </script>
@@ -55,6 +56,11 @@
               <ellipse cx="12" cy="5" rx="9" ry="3"/>
               <path d="M3 5V19A9 3 0 0 0 21 19V5"/>
               <path d="M3 12A9 3 0 0 0 21 12"/>
+            </svg>
+          {:else if item.id === "proxy"}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
             </svg>
           {:else if item.id === "settings"}
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

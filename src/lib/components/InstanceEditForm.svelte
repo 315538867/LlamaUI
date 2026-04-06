@@ -181,13 +181,12 @@
   </div>
 
   {#if editMode === "server"}
-    <div class="field-row" style="align-items: flex-start; min-height: 0;">
+    <div class="field-row system-prompt-row">
       <label class="field-label" for="edit-system-prompt" style="padding-top: 6px;">系统提示</label>
       <textarea id="edit-system-prompt" class="field-textarea"
         value={editParams.system_prompt ?? ""}
         oninput={(e) => setParam("system_prompt", (e.target as HTMLTextAreaElement).value || null)}
         placeholder="你是一个有帮助的 AI 助手"
-        rows="3"
       ></textarea>
     </div>
   {/if}
@@ -347,12 +346,15 @@
   transition: border-color 0.12s;
   resize: none;
   flex: 1;
-  height: 72px;
-  min-height: 72px;
   font-family: inherit;
   line-height: 1.4;
 }
 .field-textarea:focus { border-color: var(--accent); }
+
+.system-prompt-row {
+  align-items: flex-start;
+  height: 84px;
+}
 
 .field-select {
   height: 26px;

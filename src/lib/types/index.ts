@@ -104,5 +104,5 @@ export interface LlamaInstall {
 
 // ── UI types ──────────────────────────────────────────────────────────────────
 
-export type PageId = "instances" | "models" | "settings";
+export type PageId = "instances" | "models" | "proxy" | "settings";
 

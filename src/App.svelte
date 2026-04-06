@@ -6,6 +6,7 @@
   import ModelLibrary from "./lib/components/ModelLibrary.svelte";
   import ModelBrowser from "./lib/components/ModelBrowser.svelte";
   import ConfigEditor from "./lib/components/ConfigEditor.svelte";
+  import ProxyConfigPanel from "./lib/components/ProxyConfigPanel.svelte";
   import { getConfigStore } from "./lib/stores/config.svelte";
   import { getInstanceStore } from "./lib/stores/process.svelte";
   import type { PageId } from "./lib/types";
@@ -52,6 +53,8 @@
         <ModelLibrary />
       {:else if activePage === "models"}
         <ModelBrowser />
+      {:else if activePage === "proxy"}
+        <ProxyConfigPanel />
       {:else if activePage === "settings"}
         <ConfigEditor />
       {/if}

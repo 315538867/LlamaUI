@@ -1,7 +1,6 @@
 <script lang="ts">
   import { getInstanceStore } from "../stores/process.svelte";
   import { getConfigStore } from "../stores/config.svelte";
-  import { getProxyStore } from "../stores/proxy.svelte";
   import {
     startInstance,
     stopInstance,
@@ -11,19 +10,16 @@
   import type { InstanceConfig, InstanceInfo, ModelInfo, LaunchParams } from "../types";
   import { logger } from "../utils/logger";
   import LogTerminal from "./LogTerminal.svelte";
-  import ProxyConfigPanel from "./ProxyConfigPanel.svelte";
   import InstanceEditForm from "./InstanceEditForm.svelte";
 
   const instanceStore = getInstanceStore();
   const configStore = getConfigStore();
-  const proxyStore = getProxyStore();
 
   // ── State ─────────────────────────────────────────────────────────────────
 
   let selectedName = $state<string | null>(null);
   let isCreating = $state(false);
   let createStep = $state<"model" | "config">("model");
-  let showProxyPanel = $state(false);
   let activeTab = $state<"config" | "logs">("config");
   let availableModels = $state<ModelInfo[]>([]);
   let scanning = $state(false);
@@ -100,7 +96,6 @@
   function selectInstance(name: string) {
     selectedName = name;
     isCreating = false;
-    showProxyPanel = false;
     const cfg = savedInstances.find((i) => i.name === name);
     if (cfg) loadFormFrom(cfg);
   }
@@ -109,7 +104,6 @@
     isCreating = true;
     createStep = "model";
     selectedName = null;
-    showProxyPanel = false;
     editName = "";
     editModelPath = "";
     editMode = "server";
@@ -278,28 +272,11 @@
         </div>
       {/if}
     </div>
-
-    <div class="panel-footer">
-      <button
-        class="proxy-log-btn"
-        class:active={showProxyPanel}
-        onclick={() => { showProxyPanel = !showProxyPanel; selectedName = null; isCreating = false; }}
-      >
-        <span class="proxy-dot" class:has-logs={proxyStore.logs.length > 0}></span>
-        代理
-        {#if proxyStore.logs.length > 0}
-          <span class="proxy-count">{proxyStore.logs.length}</span>
-        {/if}
-      </button>
-    </div>
   </div>
 
   <!-- ── Right: Content panel ─────────────────────────────────────────────── -->
   <div class="panel-right">
-    {#if showProxyPanel}
-      <ProxyConfigPanel />
-
-    {:else if !selectedName && !isCreating}
+    {#if !selectedName && !isCreating}
       <div class="empty-state">
         <div class="empty-icon">⬡</div>
         <div class="empty-msg">选择或创建一个实例</div>
@@ -565,56 +542,6 @@
 .inst-status {
   font-size: 10px;
   flex-shrink: 0;
-}
-
-/* ── Left Panel Footer ── */
-.panel-footer {
-  flex-shrink: 0;
-  padding: 6px 8px;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.proxy-log-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 6px 8px;
-  border-radius: 5px;
-  border: 1px solid transparent;
-  background: none;
-  cursor: pointer;
-  font-size: 11px;
-  color: var(--text-muted);
-  transition: background 0.12s, color 0.12s;
-  text-align: left;
-}
-.proxy-log-btn:hover { background: var(--bg-hover); color: var(--text-secondary); }
-.proxy-log-btn.active {
-  background: rgba(59,130,246,0.09);
-  border-color: rgba(59,130,246,0.2);
-  color: var(--text-base);
-}
-
-.proxy-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--border);
-  flex-shrink: 0;
-  transition: background 0.2s;
-}
-.proxy-dot.has-logs { background: var(--accent); }
-
-.proxy-count {
-  margin-left: auto;
-  font-size: 10px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  padding: 0 5px;
-  line-height: 16px;
-  color: var(--text-muted);
 }
 
 /* ── Right Panel ── */

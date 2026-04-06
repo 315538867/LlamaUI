@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getConfigStore } from "../stores/config.svelte";
   import { getProxyStore } from "../stores/proxy.svelte";
-  import { restartProxy } from "../services/tauri-bridge";
+  import { restartProxy, getProxyStatus } from "../services/tauri-bridge";
   import LogTerminal from "./LogTerminal.svelte";
 
   const configStore = getConfigStore();
@@ -15,6 +15,9 @@
   let proxyMsg = $state("");
   let proxyMsgTimer: ReturnType<typeof setTimeout> | undefined;
 
+  let proxyRunning = $state(false);
+  let proxyRoutes = $state<{ name: string; port: number }[]>([]);
+
   $effect(() => {
     if (configStore.loaded) {
       proxyPort = configStore.config.proxy_port ?? 8080;
@@ -23,6 +26,20 @@
       proxyApiKey = configStore.config.proxy_api_key ?? "";
     }
   });
+
+  $effect(() => {
+    refreshStatus();
+    const timer = setInterval(refreshStatus, 3000);
+    return () => clearInterval(timer);
+  });
+
+  async function refreshStatus() {
+    try {
+      const s = await getProxyStatus();
+      proxyRunning = s.running;
+      proxyRoutes = s.routes ?? [];
+    } catch { /* ignore */ }
+  }
 
   const proxyLogLines = $derived(
     proxyStore.logs.map((e) => ({
@@ -47,6 +64,7 @@
       clearTimeout(proxyMsgTimer);
       proxyMsg = "已应用 ✓";
       proxyMsgTimer = setTimeout(() => { proxyMsg = ""; }, 2000);
+      await refreshStatus();
     } catch (e) {
       proxyMsg = String(e);
     } finally {
@@ -56,6 +74,29 @@
 </script>
 
 <div class="proxy-panel">
+  <!-- 运行状态 -->
+  <div class="proxy-status-section">
+    <div class="proxy-section-title">运行状态</div>
+    <div class="status-row">
+      <span class="status-dot" class:running={proxyRunning}></span>
+      <span class="status-label">{proxyRunning ? `运行中 · :${proxyPort}` : "已停止"}</span>
+    </div>
+    {#if proxyRoutes.length > 0}
+      <div class="routes-title">路由表</div>
+      <div class="routes-list">
+        {#each proxyRoutes as r}
+          <div class="route-item">
+            <span class="route-name">{r.name}</span>
+            <span class="route-arrow">→</span>
+            <span class="route-port">:{r.port}</span>
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <div class="routes-empty">暂无活跃路由</div>
+    {/if}
+  </div>
+
   <!-- 代理配置 -->
   <div class="proxy-config-section">
     <div class="proxy-section-title">代理配置</div>
@@ -109,6 +150,69 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.proxy-status-section {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.status-dot.running { background: var(--success); }
+
+.status-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.routes-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.routes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.route-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 3px 6px;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+}
+
+.route-name { color: var(--text-base); font-weight: 500; }
+.route-arrow { color: var(--text-muted); }
+.route-port { color: var(--accent); font-family: monospace; }
+
+.routes-empty {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .proxy-config-section {
