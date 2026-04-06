@@ -189,23 +189,13 @@ impl InstanceRegistry {
             // Instance-level API key removed — proxy controls all access
         }
 
-        // System prompt → temp file
-        let mut sp_temp_path: Option<PathBuf> = None;
+        // System prompt
+        let sp_temp_path: Option<PathBuf> = None;
         if matches!(config.mode, LaunchMode::Server) {
             if let Some(ref sp) = p.system_prompt {
                 if !sp.is_empty() {
-                    let pid_hint = std::process::id();
-                    let ts = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-                    let tmp = std::env::temp_dir()
-                        .join(format!("llama_sp_{}_{}.txt", ts, pid_hint));
-                    std::fs::write(&tmp, sp)
-                        .map_err(|e| format!("写入系统提示词临时文件失败: {}", e))?;
-                    args.push("--system-prompt-file".into());
-                    args.push(tmp.to_string_lossy().into_owned());
-                    sp_temp_path = Some(tmp);
+                    args.push("--system-prompt".into());
+                    args.push(sp.clone());
                 }
             }
         }

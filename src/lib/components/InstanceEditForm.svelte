@@ -181,8 +181,8 @@
   </div>
 
   {#if editMode === "server"}
-    <div class="field-row system-prompt-row">
-      <label class="field-label" for="edit-system-prompt" style="padding-top: 6px;">系统提示</label>
+    <div class="system-prompt-block">
+      <label class="field-label" for="edit-system-prompt">系统提示</label>
       <textarea id="edit-system-prompt" class="field-textarea"
         value={editParams.system_prompt ?? ""}
         oninput={(e) => setParam("system_prompt", (e.target as HTMLTextAreaElement).value || null)}
@@ -345,18 +345,22 @@
   outline: none;
   transition: border-color 0.12s;
   resize: none;
-  flex: 1;
   font-family: inherit;
   line-height: 1.4;
+  width: 100%;
   height: 72px;
-  min-height: 72px;
-  max-height: 72px;
   box-sizing: border-box;
+  display: block;
 }
 .field-textarea:focus { border-color: var(--accent); }
 
-.system-prompt-row {
-  align-items: flex-start;
+.system-prompt-block {
+  display: block;
+  padding: 2px 0;
+}
+.system-prompt-block .field-label {
+  display: block;
+  margin-bottom: 4px;
 }
 
 .field-select {
