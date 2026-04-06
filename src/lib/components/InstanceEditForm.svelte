@@ -183,25 +183,26 @@
   {#if editMode === "server"}
     <div class="field-row">
       <span class="field-label">Flash Attention</span>
-    <label class="toggle">
-      <input type="checkbox"
-        checked={editParams.flash_attn ?? false}
-        onchange={(e) => setParam("flash_attn", (e.target as HTMLInputElement).checked)}
-      />
-      <span class="toggle-track"></span>
-    </label>
-  </div>
+      <label class="toggle">
+        <input type="checkbox"
+          checked={editParams.flash_attn ?? false}
+          onchange={(e) => setParam("flash_attn", (e.target as HTMLInputElement).checked)}
+        />
+        <span class="toggle-track"></span>
+      </label>
+    </div>
 
-  <div class="field-row">
-    <span class="field-label">持续批处理</span>
-    <label class="toggle">
-      <input type="checkbox"
-        checked={editParams.cont_batching ?? false}
-        onchange={(e) => setParam("cont_batching", (e.target as HTMLInputElement).checked)}
-      />
-      <span class="toggle-track"></span>
-    </label>
-  </div>
+    <div class="field-row">
+      <span class="field-label">持续批处理</span>
+      <label class="toggle">
+        <input type="checkbox"
+          checked={editParams.cont_batching ?? false}
+          onchange={(e) => setParam("cont_batching", (e.target as HTMLInputElement).checked)}
+        />
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+  {/if}
 
   <div class="field-row">
     <span class="field-label">锁定内存</span>
@@ -324,25 +325,6 @@
 .field-input:focus { border-color: var(--accent); }
 .field-input.flex-1 { flex: 1; }
 .field-input.w-num { width: 80px; }
-
-.field-textarea {
-  padding: 6px 8px;
-  font-size: 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  color: var(--text-base);
-  outline: none;
-  transition: border-color 0.12s;
-  resize: none;
-  font-family: inherit;
-  line-height: 1.4;
-  width: 100%;
-  height: 72px;
-  box-sizing: border-box;
-  display: block;
-}
-.field-textarea:focus { border-color: var(--accent); }
 
 .field-select {
   height: 26px;
