@@ -181,18 +181,8 @@
   </div>
 
   {#if editMode === "server"}
-    <div class="system-prompt-block">
-      <label class="field-label" for="edit-system-prompt">系统提示</label>
-      <textarea id="edit-system-prompt" class="field-textarea"
-        value={editParams.system_prompt ?? ""}
-        oninput={(e) => setParam("system_prompt", (e.target as HTMLTextAreaElement).value || null)}
-        placeholder="你是一个有帮助的 AI 助手"
-      ></textarea>
-    </div>
-  {/if}
-
-  <div class="field-row">
-    <span class="field-label">Flash Attention</span>
+    <div class="field-row">
+      <span class="field-label">Flash Attention</span>
     <label class="toggle">
       <input type="checkbox"
         checked={editParams.flash_attn ?? false}
@@ -353,15 +343,6 @@
   display: block;
 }
 .field-textarea:focus { border-color: var(--accent); }
-
-.system-prompt-block {
-  display: block;
-  padding: 2px 0;
-}
-.system-prompt-block .field-label {
-  display: block;
-  margin-bottom: 4px;
-}
 
 .field-select {
   height: 26px;

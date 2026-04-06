@@ -189,16 +189,9 @@ impl InstanceRegistry {
             // Instance-level API key removed — proxy controls all access
         }
 
-        // System prompt
+        // System prompt: llama-server 新版本不支持 --system-prompt CLI 参数
+        // system prompt 通过 API 请求的 system 字段传入，此处无需处理
         let sp_temp_path: Option<PathBuf> = None;
-        if matches!(config.mode, LaunchMode::Server) {
-            if let Some(ref sp) = p.system_prompt {
-                if !sp.is_empty() {
-                    args.push("--system-prompt".into());
-                    args.push(sp.clone());
-                }
-            }
-        }
 
         // Extra args
         if let Some(ref extra) = p.extra_args {

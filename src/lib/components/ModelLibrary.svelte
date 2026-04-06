@@ -50,7 +50,6 @@
       seed: null,
       mlock: null,
       no_mmap: null,
-      system_prompt: null,
       extra_args: null,
       no_context_shift: null,
       keep: null,
