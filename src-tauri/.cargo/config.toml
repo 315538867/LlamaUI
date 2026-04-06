@@ -1,5 +1,14 @@
-[source.crates-io]
-replace-with = 'ustc'
+[build]
+target-dir = "target"
 
-[source.ustc]
-registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+# macOS: 拆分调试信息加快增量链接
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "split-debuginfo=unpacked"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "split-debuginfo=unpacked"]
+
+# 依赖项不生成调试信息，减少编译时间和磁盘占用
+[profile.dev.package."*"]
+opt-level = 0
+debug = false
