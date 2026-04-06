@@ -21,11 +21,13 @@ export interface InstancePerfStats {
 
 let perfStats = $state<Record<string, InstancePerfStats>>({});
 
-// 匹配格式：
-//   llama_print_timings:        eval time = xxx ms / 512 tokens (..., 63.0 tokens per second)
-//   llama_print_timings: prompt eval time = xxx ms / 128 tokens (..., 244.6 tokens per second)
-const RE_EVAL = /(?:llama_print_timings|llama_perf_context_print):\s+eval time[^/]+\/\s*(\d+)\s+tokens[^,]+,\s*([\d.]+)\s+tokens per second/;
-const RE_PROMPT = /(?:llama_print_timings|llama_perf_context_print):\s+prompt eval time[^/]+\/\s*(\d+)\s+tokens[^,]+,\s*([\d.]+)\s+tokens per second/;
+// 匹配格式（新版 slot print_timing 和旧版 llama_print_timings 均兼容）：
+//   新版：prompt eval time =    7296.97 ms / 25420 tokens (..., 3483.64 tokens per second)
+//   新版：       eval time =   12075.89 ms /   769 tokens (...,   63.68 tokens per second)
+//   旧版：llama_print_timings:        eval time = xxx ms / 512 tokens (..., 63.0 tokens per second)
+//   旧版：llama_print_timings: prompt eval time = xxx ms / 128 tokens (..., 244.6 tokens per second)
+const RE_EVAL = /(?<!prompt )eval time\s*=\s*[\d.]+\s*ms\s*\/\s*(\d+)\s*tokens[^,]+,\s*([\d.]+)\s+tokens per second/;
+const RE_PROMPT = /prompt eval time\s*=\s*[\d.]+\s*ms\s*\/\s*(\d+)\s*tokens[^,]+,\s*([\d.]+)\s+tokens per second/;
 
 function ensurePerf(name: string): InstancePerfStats {
   if (!perfStats[name]) {
