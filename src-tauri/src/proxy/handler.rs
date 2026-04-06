@@ -47,6 +47,23 @@ fn emit_log(cfg: &ProxyConfig, level: &str, msg: impl Into<String>) {
     cfg.app_handle.emit("proxy://log", &event).ok();
 }
 
+fn sse_error_response(message: &str) -> Response {
+    let data = json!({
+        "type": "error",
+        "error": {
+            "type": "server_error",
+            "message": message
+        }
+    });
+    let body = format!("event: error\ndata: {}\n\ndata: [DONE]\n\n", data);
+    Response::builder()
+        .status(200)
+        .header("Content-Type", "text/event-stream")
+        .header("Cache-Control", "no-cache")
+        .body(axum::body::Body::from(body))
+        .unwrap_or_else(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())
+}
+
 fn error_resp(status: StatusCode, error_type: &str, message: impl Into<String>) -> Response {
     let message = message.into();
     (status, Json(json!({ "error": { "type": error_type, "message": message } }))).into_response()
@@ -163,10 +180,7 @@ pub async fn handle_responses(
         let status = upstream.status();
         let body_text = upstream.text().await.unwrap_or_default();
         emit_log(&cfg, "error", format!("[✗] {} {}", status.as_u16(), body_text));
-        return (
-            StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
-            body_text,
-        ).into_response();
+        return sse_error_response(&body_text);
     }
 
     emit_log(&cfg, "info", format!("[←] 200 OK  model={}", model_name));
@@ -241,6 +255,7 @@ pub async fn handle_passthrough(
     };
 
     let method = req.method().clone();
+    let method_str = method.as_str().to_string();
     let path_and_query = req.uri().path_and_query()
         .map(|pq| pq.as_str().to_owned())
         .unwrap_or_else(|| "/".into());
@@ -262,8 +277,21 @@ pub async fn handle_passthrough(
 
     let upstream = match rb.body(reqwest_body).send().await {
         Ok(r) => r,
-        Err(e) => return (StatusCode::BAD_GATEWAY, format!("upstream error: {}", e)).into_response(),
+        Err(e) => {
+            let msg = format!("upstream error: {}", e);
+            emit_log(&cfg, "error", &msg);
+            return sse_error_response(&msg);
+        }
     };
+
+    emit_log(&cfg, "info", format!("[→] passthrough {} {} → {}", method_str, path_and_query, target));
+
+    if !upstream.status().is_success() {
+        let status = upstream.status();
+        let body_text = upstream.text().await.unwrap_or_default();
+        emit_log(&cfg, "error", format!("[✗] {} {}", status.as_u16(), body_text));
+        return sse_error_response(&body_text);
+    }
 
     let status = StatusCode::from_u16(upstream.status().as_u16())
         .unwrap_or(StatusCode::BAD_GATEWAY);

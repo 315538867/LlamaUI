@@ -348,12 +348,15 @@
   flex: 1;
   font-family: inherit;
   line-height: 1.4;
+  height: 72px;
+  min-height: 72px;
+  max-height: 72px;
+  box-sizing: border-box;
 }
 .field-textarea:focus { border-color: var(--accent); }
 
 .system-prompt-row {
   align-items: flex-start;
-  height: 84px;
 }
 
 .field-select {
