@@ -156,10 +156,8 @@ pub async fn handle_responses(
 
     emit_log(&cfg, "info", format!("[→] /v1/responses  model={}  →  {}", model_name, target));
 
-    // 调试：打印 tools 字段结构
-    if let Some(tools) = body.get("tools") {
-        emit_log(&cfg, "info", format!("[DEBUG] tools: {}", tools));
-    }
+    // 调试：打印完整请求体
+    emit_log(&cfg, "info", format!("[DEBUG] request body: {}", body));
 
     // 4. 根据模式选择处理方式
     match cfg.responses_mode {
@@ -191,6 +189,7 @@ async fn handle_responses_direct(cfg: ProxyConfig, target: String, body: Value) 
         let status = upstream.status();
         let body_text = upstream.text().await.unwrap_or_default();
         emit_log(&cfg, "error", format!("[✗] {} {}", status.as_u16(), body_text));
+        emit_log(&cfg, "error", format!("[✗] request was: {}", body));
         return sse_error_response(&body_text);
     }
 
