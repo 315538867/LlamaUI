@@ -156,6 +156,11 @@ pub async fn handle_responses(
 
     emit_log(&cfg, "info", format!("[→] /v1/responses  model={}  →  {}", model_name, target));
 
+    // 调试：打印 tools 字段结构
+    if let Some(tools) = body.get("tools") {
+        emit_log(&cfg, "info", format!("[DEBUG] tools: {}", tools));
+    }
+
     // 4. 根据模式选择处理方式
     match cfg.responses_mode {
         ProxyResponsesMode::Direct => handle_responses_direct(cfg, target, body).await,
