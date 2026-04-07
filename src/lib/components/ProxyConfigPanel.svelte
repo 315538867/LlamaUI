@@ -11,6 +11,7 @@
   let proxyCors = $state(configStore.config.proxy_cors ?? true);
   let proxyAllowExternal = $state(configStore.config.proxy_allow_external ?? false);
   let proxyApiKey = $state(configStore.config.proxy_api_key ?? "");
+  let proxyResponsesMode = $state<'direct' | 'anthropic'>(configStore.config.proxy_responses_mode ?? 'direct');
   let proxyApplying = $state(false);
   let proxyMsg = $state("");
   let proxyMsgTimer: ReturnType<typeof setTimeout> | undefined;
@@ -24,6 +25,7 @@
       proxyCors = configStore.config.proxy_cors ?? true;
       proxyAllowExternal = configStore.config.proxy_allow_external ?? false;
       proxyApiKey = configStore.config.proxy_api_key ?? "";
+      proxyResponsesMode = configStore.config.proxy_responses_mode ?? 'direct';
     }
   });
 
@@ -59,8 +61,9 @@
         proxy_cors: proxyCors,
         proxy_allow_external: proxyAllowExternal,
         proxy_api_key: proxyApiKey || null,
+        proxy_responses_mode: proxyResponsesMode,
       });
-      await restartProxy(proxyPort, proxyCors, proxyAllowExternal, proxyApiKey || null);
+      await restartProxy(proxyPort, proxyCors, proxyAllowExternal, proxyApiKey || null, proxyResponsesMode);
       clearTimeout(proxyMsgTimer);
       proxyMsg = "已应用 ✓";
       proxyMsgTimer = setTimeout(() => { proxyMsg = ""; }, 2000);
@@ -122,6 +125,21 @@
           <input type="checkbox" bind:checked={proxyAllowExternal} />
           <span class="toggle-track"></span>
         </label>
+      </div>
+      <div class="proxy-field-row">
+        <span class="proxy-field-label">转换模式</span>
+        <div class="mode-toggle">
+          <button
+            class="mode-btn"
+            class:active={proxyResponsesMode === 'direct'}
+            onclick={() => proxyResponsesMode = 'direct'}
+          >直连</button>
+          <button
+            class="mode-btn"
+            class:active={proxyResponsesMode === 'anthropic'}
+            onclick={() => proxyResponsesMode = 'anthropic'}
+          >Anthropic</button>
+        </div>
       </div>
     </div>
     <div class="proxy-apply-row">
@@ -362,4 +380,30 @@
 .action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-start { background: var(--accent); color: #fff; }
 .btn-start:not(:disabled):hover { opacity: 0.85; }
+
+.mode-toggle {
+  display: flex;
+  gap: 4px;
+}
+.mode-btn {
+  font-size: 11px;
+  font-weight: 500;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.mode-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.mode-btn:not(.active):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 </style>

@@ -32,6 +32,7 @@ pub fn run() {
                 app_config.proxy_cors,
                 app_config.proxy_allow_external,
                 app_config.proxy_api_key,
+                app_config.proxy_responses_mode,
                 app.handle().clone(),
             );
 

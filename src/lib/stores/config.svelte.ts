@@ -37,6 +37,7 @@ let config = $state<AppConfig>({
   proxy_cors: true,
   proxy_allow_external: false,
   proxy_api_key: null,
+  proxy_responses_mode: 'direct' as const,
 });
 
 let presets = $state<Preset[]>([]);

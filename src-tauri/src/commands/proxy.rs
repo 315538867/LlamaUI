@@ -4,7 +4,7 @@ use tauri::{AppHandle, State};
 use tauri::async_runtime::JoinHandle;
 
 use crate::proxy::server::{start, ProxyConfig};
-use crate::services::config_store::ConfigStore;
+use crate::services::config_store::{ConfigStore, ProxyResponsesMode};
 
 pub struct ProxyState {
     handle: Mutex<Option<JoinHandle<()>>>,
@@ -33,9 +33,10 @@ impl ProxyState {
         cors: bool,
         allow_external: bool,
         api_key: Option<String>,
+        responses_mode: ProxyResponsesMode,
         app_handle: AppHandle,
     ) {
-        let config = ProxyConfig::new(port, cors, allow_external, api_key, app_handle);
+        let config = ProxyConfig::new(port, cors, allow_external, api_key, responses_mode, app_handle);
         let handle = start(config.clone());
         if let Ok(mut h) = self.handle.lock() { *h = Some(handle); }
         if let Ok(mut c) = self.config.lock() { *c = Some(config); }
@@ -67,6 +68,7 @@ pub fn restart_proxy(
     cors: bool,
     allow_external: bool,
     api_key: Option<String>,
+    responses_mode: ProxyResponsesMode,
     app_handle: AppHandle,
     state: State<Arc<ProxyState>>,
     config_store: State<Arc<ConfigStore>>,
@@ -77,6 +79,7 @@ pub fn restart_proxy(
     app_config.proxy_cors = cors;
     app_config.proxy_allow_external = allow_external;
     app_config.proxy_api_key = api_key.clone();
+    app_config.proxy_responses_mode = responses_mode.clone();
     config_store.save_config(&app_config)?;
 
     // Snapshot current routes so they survive the restart
@@ -93,7 +96,7 @@ pub fn restart_proxy(
     }
 
     // Start new server with same routes
-    let new_config = ProxyConfig::new(port, cors, allow_external, api_key, app_handle);
+    let new_config = ProxyConfig::new(port, cors, allow_external, api_key, responses_mode, app_handle);
     for (name, port) in existing_routes {
         new_config.routes.insert(name, port);
     }

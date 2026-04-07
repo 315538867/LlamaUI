@@ -86,6 +86,7 @@ export interface AppConfig {
   proxy_cors: boolean;
   proxy_allow_external: boolean;
   proxy_api_key: string | null;
+  proxy_responses_mode: 'direct' | 'anthropic';
 }
 
 export interface Preset {

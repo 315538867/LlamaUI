@@ -73,7 +73,8 @@ export const restartProxy = (
   cors: boolean,
   allowExternal: boolean,
   apiKey: string | null,
-) => invoke<void>("restart_proxy", { port, cors, allowExternal, apiKey });
+  responsesMode: 'direct' | 'anthropic',
+) => invoke<void>("restart_proxy", { port, cors, allowExternal, apiKey, responsesMode });
 
 export const getProxyStatus = () =>
   invoke<{

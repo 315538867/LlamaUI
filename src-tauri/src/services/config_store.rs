@@ -137,6 +137,17 @@ pub struct AppConfig {
     /// Proxy-level API key (validates incoming Codex requests)
     #[serde(default)]
     pub proxy_api_key: Option<String>,
+    /// /v1/responses 处理模式：direct = 直透传到 llama.cpp，anthropic = 转 Anthropic 格式
+    #[serde(default)]
+    pub proxy_responses_mode: ProxyResponsesMode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProxyResponsesMode {
+    #[default]
+    Direct,
+    Anthropic,
 }
 
 fn default_proxy_port() -> u16 { 8080 }
@@ -155,6 +166,7 @@ impl Default for AppConfig {
             proxy_cors: true,
             proxy_allow_external: false,
             proxy_api_key: None,
+            proxy_responses_mode: ProxyResponsesMode::Direct,
         }
     }
 }

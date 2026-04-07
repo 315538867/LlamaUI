@@ -12,6 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 use tokio_stream::wrappers::ReceiverStream;
 
+use crate::services::config_store::ProxyResponsesMode;
 use super::convert::{request::codex_to_anthropic, response::SseConverter};
 use super::server::ProxyConfig;
 
@@ -155,6 +156,59 @@ pub async fn handle_responses(
 
     emit_log(&cfg, "info", format!("[→] /v1/responses  model={}  →  {}", model_name, target));
 
+    // 4. 根据模式选择处理方式
+    match cfg.responses_mode {
+        ProxyResponsesMode::Direct => handle_responses_direct(cfg, target, body).await,
+        ProxyResponsesMode::Anthropic => handle_responses_anthropic(cfg, target, body).await,
+    }
+}
+
+/// 直连模式：直接透传到 llama.cpp /v1/responses
+async fn handle_responses_direct(cfg: ProxyConfig, target: String, body: Value) -> Response {
+    let target_url = format!("{}/v1/responses", target.trim_end_matches('/'));
+
+    let upstream = match cfg.client
+        .post(&target_url)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            let msg = format!("上游错误: {}", e);
+            emit_log(&cfg, "error", &msg);
+            return (StatusCode::BAD_GATEWAY, msg).into_response();
+        }
+    };
+
+    if !upstream.status().is_success() {
+        let status = upstream.status();
+        let body_text = upstream.text().await.unwrap_or_default();
+        emit_log(&cfg, "error", format!("[✗] {} {}", status.as_u16(), body_text));
+        return sse_error_response(&body_text);
+    }
+
+    emit_log(&cfg, "info", format!("[←] 200 OK (direct)  →  {}", target_url));
+
+    let status = StatusCode::from_u16(upstream.status().as_u16())
+        .unwrap_or(StatusCode::OK);
+    let resp_headers = upstream.headers().clone();
+    let stream = upstream.bytes_stream()
+        .map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)));
+
+    let mut builder = Response::builder().status(status);
+    for (name, value) in &resp_headers {
+        if HOP_BY_HOP.contains(&name.as_str()) { continue; }
+        builder = builder.header(name.as_str(), value.as_bytes());
+    }
+    builder
+        .body(axum::body::Body::from_stream(stream))
+        .unwrap_or_else(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())
+}
+
+/// Anthropic 转换模式：Codex → Anthropic Messages API → 转回 Codex 格式
+async fn handle_responses_anthropic(cfg: ProxyConfig, target: String, body: Value) -> Response {
     // 4. Convert Codex Responses API → Anthropic Messages API
     let anthropic_req = codex_to_anthropic(&body);
     let target_url = format!("{}/v1/messages", target.trim_end_matches('/'));
@@ -183,7 +237,7 @@ pub async fn handle_responses(
         return sse_error_response(&body_text);
     }
 
-    emit_log(&cfg, "info", format!("[←] 200 OK  model={}", model_name));
+    emit_log(&cfg, "info", format!("[←] 200 OK (anthropic)  →  {}", target_url));
 
     // 6. Stream response back
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(128);

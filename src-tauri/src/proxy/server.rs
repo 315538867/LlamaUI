@@ -7,6 +7,7 @@ use dashmap::DashMap;
 use tauri::{AppHandle, async_runtime::JoinHandle};
 use tower_http::cors::CorsLayer;
 
+use crate::services::config_store::ProxyResponsesMode;
 use super::handler::{handle_passthrough, handle_responses};
 
 #[derive(Clone)]
@@ -19,6 +20,7 @@ pub struct ProxyConfig {
     pub client: Arc<Client>,
     pub cors: bool,
     pub allow_external: bool,
+    pub responses_mode: ProxyResponsesMode,
     pub app_handle: AppHandle,
 }
 
@@ -28,6 +30,7 @@ impl ProxyConfig {
         cors: bool,
         allow_external: bool,
         api_key: Option<String>,
+        responses_mode: ProxyResponsesMode,
         app_handle: AppHandle,
     ) -> Self {
         Self {
@@ -44,6 +47,7 @@ impl ProxyConfig {
             ),
             cors,
             allow_external,
+            responses_mode,
             app_handle,
         }
     }
