@@ -13,6 +13,7 @@ enum State {
     Idle,
     InText { index: u32 },
     InToolCall { index: u32, id: String, name: String, args_buf: String },
+    InThinking,
 }
 
 impl SseConverter {
@@ -108,6 +109,11 @@ impl SseConverter {
                 self.state = State::InToolCall { index, id, name, args_buf: String::new() };
                 vec![format!("event: response.output_item.added\ndata: {}\n\n", data)]
             }
+            "thinking" => {
+                self.state = State::InThinking;
+                // 发一个 SSE comment 作为 keepalive，防止 LAN NAT 超时
+                vec![": thinking\n\n".to_string()]
+            }
             _ => vec![],
         }
     }
@@ -138,6 +144,10 @@ impl SseConverter {
                     args_buf.push_str(partial);
                 }
                 vec![]
+            }
+            "thinking_delta" => {
+                // thinking 内容不转发给 Codex，但发 SSE comment 保持连接活跃
+                vec![": thinking\n\n".to_string()]
             }
             _ => vec![],
         }
