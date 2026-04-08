@@ -93,8 +93,8 @@
   const codexEnv = $derived(
     `export OPENAI_BASE_URL=${baseUrl}/v1\nexport OPENAI_API_KEY=${serverApiKey || "sk-no-key-required"}`
   );
-  // Droid CLI 环境变量
-  const droidEnv = $derived(
+  // Claude Code 环境变量
+  const claudeCodeEnv = $derived(
     `export ANTHROPIC_BASE_URL=${baseUrl}/anthropic\nexport ANTHROPIC_API_KEY=${serverApiKey || "sk-no-key-required"}`
   );
 </script>
@@ -194,16 +194,16 @@
         </div>
       </div>
 
-      <!-- Droid CLI -->
+      <!-- Claude Code -->
       <div class="client-card">
         <div class="client-header">
-          <div class="client-name">Droid CLI</div>
+          <div class="client-name">Claude Code</div>
           <div class="client-badge badge-anthropic">Anthropic 兼容</div>
-          <button class="copy-btn" onclick={() => copyText(droidEnv, "droid")}>
-            {copied === "droid" ? "已复制 ✓" : "复制"}
+          <button class="copy-btn" onclick={() => copyText(claudeCodeEnv, "claudeCode")}>
+            {copied === "claudeCode" ? "已复制 ✓" : "复制"}
           </button>
         </div>
-        <pre class="code-block">{droidEnv}</pre>
+        <pre class="code-block">{claudeCodeEnv}</pre>
         <div class="client-apis">
           接口：<code>/anthropic/v1/messages</code>
         </div>
