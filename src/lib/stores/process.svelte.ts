@@ -120,16 +120,3 @@ export function getInstanceStore() {
     },
   };
 }
-
-// ── Backward-compat shim for StatusBar and other consumers ───────────────────
-
-export function getProcessStore() {
-  const store = getInstanceStore();
-  return {
-    get instances() { return store.instances; },
-    get tokensPerSec() { return store.tokensPerSec; },
-    get promptTps() { return store.promptTps; },
-    runningCount: () => store.runningCount(),
-    destroy: () => store.destroy(),
-  };
-}

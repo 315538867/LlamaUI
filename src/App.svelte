@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount } from "svelte";
   import "./app.css";
   import Sidebar from "./lib/components/Sidebar.svelte";
   import StatusBar from "./lib/components/StatusBar.svelte";
@@ -28,8 +28,8 @@
     window.onunhandledrejection = (ev) => {
       globalError = ev.reason instanceof Error ? ev.reason.message : String(ev.reason);
     };
+    window.addEventListener("beforeunload", () => instanceStore.destroy());
   });
-  onDestroy(() => { instanceStore.destroy(); });
 </script>
 
 <div class="flex h-full w-full flex-col" style="background:var(--bg-base);">

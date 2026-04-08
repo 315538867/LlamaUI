@@ -106,3 +106,45 @@ export interface LlamaInstall {
 
 export type PageId = "instances" | "models" | "proxy" | "settings";
 
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+export const DEFAULT_PARAMS: LaunchParams = {
+  gpu_layers: 99,
+  ctx_size: 4096,
+  threads: null,
+  flash_attn: true,
+  cont_batching: true,
+  batch_size: null,
+  ubatch_size: null,
+  parallel: null,
+  cache_type_k: null,
+  cache_type_v: null,
+  no_kv_offload: null,
+  seed: null,
+  mlock: null,
+  no_mmap: null,
+  extra_args: null,
+  no_context_shift: null,
+  keep: null,
+};
+
+export const PARAM_LABELS: Record<string, string> = {
+  gpu_layers: "GPU 层数",
+  ctx_size: "上下文长度",
+  threads: "线程数",
+  flash_attn: "Flash Attention",
+  cont_batching: "连续批处理",
+  batch_size: "批处理大小",
+  ubatch_size: "微批大小",
+  parallel: "并行槽",
+  cache_type_k: "KV缓存K类型",
+  cache_type_v: "KV缓存V类型",
+  no_kv_offload: "禁用KV卸载",
+  seed: "随机种子",
+  mlock: "内存锁定",
+  no_mmap: "禁用内存映射",
+  no_context_shift: "禁用上下文移位",
+  keep: "保留头部Token数",
+  extra_args: "额外参数",
+};

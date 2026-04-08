@@ -1,19 +1,20 @@
 <script lang="ts">
   import { getInstanceStore } from "../stores/process.svelte";
   import { getConfigStore } from "../stores/config.svelte";
+  import { getModelStore } from "../stores/models.svelte";
   import {
     startInstance,
     stopInstance,
     deleteInstanceConfig,
-    scanModels,
   } from "../services/tauri-bridge";
   import type { InstanceConfig, InstanceInfo, ModelInfo, LaunchParams } from "../types";
-  import { logger } from "../utils/logger";
+  import { DEFAULT_PARAMS, PARAM_LABELS } from "../types";
   import LogTerminal from "./LogTerminal.svelte";
   import InstanceEditForm from "./InstanceEditForm.svelte";
 
   const instanceStore = getInstanceStore();
   const configStore = getConfigStore();
+  const modelStore = getModelStore();
 
   // ── State ─────────────────────────────────────────────────────────────────
 
@@ -21,40 +22,17 @@
   let isCreating = $state(false);
   let createStep = $state<"model" | "config">("model");
   let activeTab = $state<"config" | "logs">("config");
-  let availableModels = $state<ModelInfo[]>([]);
-  let scanning = $state(false);
   let saving = $state(false);
   let actionErr = $state("");
   let actionErrTimer: ReturnType<typeof setTimeout> | undefined;
   let paramsCollapsed = $state(false);
+  let deleteConfirmName = $state<string | null>(null);
 
   // Edit form state (lifted here, passed down to InstanceEditForm)
   let editName = $state("");
   let editModelPath = $state("");
   let editMode = $state<"server" | "cli">("server");
-  let editParams = $state<LaunchParams>(defaultParams());
-
-  function defaultParams(): LaunchParams {
-    return {
-      gpu_layers: 99,
-      ctx_size: 4096,
-      threads: null,
-      flash_attn: true,
-      cont_batching: true,
-      batch_size: null,
-      ubatch_size: null,
-      parallel: null,
-      cache_type_k: null,
-      cache_type_v: null,
-      no_kv_offload: null,
-      seed: null,
-      mlock: null,
-      no_mmap: null,
-      extra_args: null,
-      no_context_shift: null,
-      keep: null,
-    };
-  }
+  let editParams = $state<LaunchParams>({ ...DEFAULT_PARAMS });
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -106,9 +84,9 @@
     editName = "";
     editModelPath = "";
     editMode = "server";
-    editParams = defaultParams();
+    editParams = { ...DEFAULT_PARAMS };
     activeTab = "config";
-    if (availableModels.length === 0) handleScan();
+    if (modelStore.models.length === 0) modelStore.refresh();
   }
 
   function generateInstanceName(m: ModelInfo): string {
@@ -131,15 +109,7 @@
   }
 
   async function handleScan() {
-    scanning = true;
-    try {
-      const result = await scanModels();
-      availableModels = result.models;
-    } catch (e) {
-      logger.error("scanModels failed:", e);
-    } finally {
-      scanning = false;
-    }
+    await modelStore.refresh();
   }
 
   function buildConfig(): InstanceConfig {
@@ -162,7 +132,7 @@
       await configStore.load();
       selectedName = cfg.name;
       isCreating = false;
-      activeTab = "logs";
+      activeTab = "logs"; // 首次创建，切换到日志
     } catch (e) {
       showErr(e);
     } finally {
@@ -177,7 +147,7 @@
     try {
       await startInstance({ ...selectedConfig, ...buildConfig() });
       await configStore.load();
-      activeTab = "logs";
+      // 已有实例重新启动，不强制切换 tab
     } catch (e) { showErr(e); }
     finally { saving = false; }
   }
@@ -194,12 +164,19 @@
 
   async function handleDelete() {
     if (!selectedName) return;
-    if (!confirm(`删除实例「${selectedName}」？`)) return;
+    deleteConfirmName = selectedName;
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirmName) return;
+    const name = deleteConfirmName;
+    deleteConfirmName = null;
     saving = true;
     actionErr = "";
     try {
-      if (isRunning) await stopInstance(selectedName);
-      await deleteInstanceConfig(selectedName);
+      const info = instanceStore.instances[name];
+      if (info?.status === "running") await stopInstance(name);
+      await deleteInstanceConfig(name);
       await configStore.load();
       selectedName = null;
       isCreating = false;
@@ -285,20 +262,20 @@
       <div class="model-pick-panel">
         <div class="model-pick-header">
           <span class="model-pick-title">选择模型文件</span>
-          <button class="btn-ghost" onclick={handleScan} disabled={scanning}>
-            {scanning ? "扫描中..." : "重新扫描"}
+          <button class="btn-ghost" onclick={handleScan} disabled={modelStore.loading}>
+            {modelStore.loading ? "扫描中..." : "重新扫描"}
           </button>
           <button class="btn-ghost" onclick={() => { isCreating = false; }}>取消</button>
         </div>
-        {#if scanning}
+        {#if modelStore.loading}
           <div class="model-pick-loading">扫描中...</div>
-        {:else if availableModels.length === 0}
+        {:else if modelStore.models.length === 0}
           <div class="model-pick-empty">
             未找到模型文件，请先在设置中配置模型目录
           </div>
         {:else}
           <div class="model-pick-list">
-            {#each availableModels as m}
+            {#each modelStore.models as m}
               <button class="model-pick-item" onclick={() => pickModel(m)}>
                 <div class="model-pick-name">{m.name}</div>
                 <div class="model-pick-meta">
@@ -341,6 +318,14 @@
         <div class="err-bar">{actionErr}</div>
       {/if}
 
+      {#if deleteConfirmName}
+        <div class="confirm-bar">
+          <span>确认删除实例「{deleteConfirmName}」？此操作不可撤销。</span>
+          <button class="action-btn btn-delete" onclick={confirmDelete} disabled={saving}>确认删除</button>
+          <button class="btn-ghost-sm" onclick={() => { deleteConfirmName = null; }}>取消</button>
+        </div>
+      {/if}
+
       {#if activeTab === "config"}
         <InstanceEditForm
           {editName}
@@ -348,7 +333,7 @@
           {editMode}
           {editParams}
           {isCreating}
-          {scanning}
+          scanning={modelStore.loading}
           selectedInfo={selectedInfo}
           onNameChange={(v) => { editName = v; }}
           onModelPathChange={(v) => { editModelPath = v; }}
@@ -365,25 +350,6 @@
             </div>
             {@const displayParams = selectedInfo?.config?.params ?? selectedConfig?.params ?? null}
             {#if displayParams}
-              {@const PARAM_LABELS: Record<string, string> = {
-                gpu_layers: "GPU 层数",
-                ctx_size: "上下文长度",
-                threads: "线程数",
-                flash_attn: "Flash Attention",
-                cont_batching: "连续批处理",
-                batch_size: "批处理大小",
-                ubatch_size: "微批大小",
-                parallel: "并行槽",
-                cache_type_k: "KV缓存K类型",
-                cache_type_v: "KV缓存V类型",
-                no_kv_offload: "禁用KV卸载",
-                seed: "随机种子",
-                mlock: "内存锁定",
-                no_mmap: "禁用内存映射",
-                no_context_shift: "禁用上下文移位",
-                keep: "保留头部Token数",
-                extra_args: "额外参数",
-              }}
               {@const activeParams = Object.entries(displayParams).filter(([, v]) => v !== null && v !== false)}
               {#if activeParams.length > 0}
                 <div class="params-bar">
@@ -621,6 +587,19 @@
   border-bottom: 1px solid rgba(239,68,68,0.15);
   flex-shrink: 0;
 }
+
+.confirm-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: rgba(239,68,68,0.06);
+  border-bottom: 1px solid rgba(239,68,68,0.18);
+  flex-shrink: 0;
+}
+.confirm-bar span { flex: 1; }
 
 /* ── Model pick panel ── */
 .model-pick-panel {

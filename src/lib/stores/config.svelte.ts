@@ -1,4 +1,5 @@
 import type { AppConfig, Preset } from "../types";
+import { DEFAULT_PARAMS } from "../types";
 import { logger } from "../utils/logger";
 import {
   getConfig,
@@ -13,25 +14,7 @@ let config = $state<AppConfig>({
   model_dirs: [],
   instances: [],
   model_presets: {},
-  default_params: {
-    gpu_layers: 99,
-    ctx_size: 4096,
-    threads: null,
-    flash_attn: true,
-    cont_batching: true,
-    batch_size: null,
-    ubatch_size: null,
-    parallel: null,
-    cache_type_k: null,
-    cache_type_v: null,
-    no_kv_offload: null,
-    seed: null,
-    mlock: null,
-    no_mmap: null,
-    extra_args: null,
-    no_context_shift: null,
-    keep: null,
-  },
+  default_params: { ...DEFAULT_PARAMS },
   last_preset: null,
   proxy_port: 8080,
   proxy_cors: true,
