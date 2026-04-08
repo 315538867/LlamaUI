@@ -17,7 +17,8 @@ pub fn codex_to_anthropic(req: &Value) -> Value {
                 }
                 Some("function_call") => {
                     // assistant 发出的工具调用 → assistant message with tool_use block
-                    let id = item.get("id").or_else(|| item.get("call_id"))
+                    // 优先取 call_id（调用标识），fallback 到 id（item 标识）
+                    let id = item.get("call_id").or_else(|| item.get("id"))
                         .and_then(|v| v.as_str()).unwrap_or("unknown");
                     let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
                     let input_obj: Value = item.get("arguments")
@@ -37,7 +38,7 @@ pub fn codex_to_anthropic(req: &Value) -> Value {
                         let next = &input[i + 1];
                         if next.get("type").and_then(|v| v.as_str()) == Some("function_call") {
                             i += 1;
-                            let nid = next.get("id").or_else(|| next.get("call_id"))
+                            let nid = next.get("call_id").or_else(|| next.get("id"))
                                 .and_then(|v| v.as_str()).unwrap_or("unknown");
                             let nname = next.get("name").and_then(|v| v.as_str()).unwrap_or("");
                             let ninput: Value = next.get("arguments")
@@ -90,10 +91,13 @@ pub fn codex_to_anthropic(req: &Value) -> Value {
         }
     }
 
-    // 转换工具定义：parameters → input_schema
+    // 转换工具定义：只保留 type="function" 的工具，parameters → input_schema
     let tools: Vec<Value> = req.get("tools")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().map(convert_tool_def).collect())
+        .map(|arr| arr.iter()
+            .filter(|t| t.get("type").and_then(|v| v.as_str()) == Some("function"))
+            .map(convert_tool_def)
+            .collect())
         .unwrap_or_default();
 
     let mut anthropic_req = json!({

@@ -110,6 +110,8 @@ impl SseConverter {
                 vec![format!("event: response.output_item.added\ndata: {}\n\n", data)]
             }
             "thinking" => {
+                // thinking 块不占用 output_index，回退递增
+                self.output_index -= 1;
                 self.state = State::InThinking;
                 // 发一个 SSE comment 作为 keepalive，防止 LAN NAT 超时
                 vec![": thinking\n\n".to_string()]
@@ -143,7 +145,8 @@ impl SseConverter {
                 if let State::InToolCall { args_buf, .. } = &mut self.state {
                     args_buf.push_str(partial);
                 }
-                vec![]
+                // 发送 SSE comment 作为 keepalive，防止长参数流式传输期间触发 idle timeout
+                vec![": tool\n\n".to_string()]
             }
             "thinking_delta" => {
                 // thinking 内容不转发给 Codex，但发 SSE comment 保持连接活跃
