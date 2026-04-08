@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { LaunchParams, InstanceInfo } from "../types";
+  import { getModelStore } from "../stores/models.svelte";
 
   interface Props {
     editName: string;
@@ -7,13 +8,11 @@
     editMode: "server" | "cli";
     editParams: LaunchParams;
     isCreating: boolean;
-    scanning: boolean;
     selectedInfo: InstanceInfo | null;
     onNameChange: (v: string) => void;
     onModelPathChange: (v: string) => void;
     onModeChange: (v: "server" | "cli") => void;
     onParamsChange: (p: LaunchParams) => void;
-    onScan: () => void;
   }
 
   let {
@@ -22,14 +21,14 @@
     editMode,
     editParams,
     isCreating,
-    scanning,
     selectedInfo,
     onNameChange,
     onModelPathChange,
     onModeChange,
     onParamsChange,
-    onScan,
   }: Props = $props();
+
+  const modelStore = getModelStore();
 
   function setParam<K extends keyof LaunchParams>(key: K, value: LaunchParams[K]) {
     onParamsChange({ ...editParams, [key]: value });
@@ -64,8 +63,8 @@
         readonly={isCreating}
       />
       {#if !isCreating}
-        <button class="btn-ghost" onclick={onScan} disabled={scanning}>
-          {scanning ? "扫描中..." : "扫描"}
+        <button class="btn-ghost" onclick={() => modelStore.refresh()} disabled={modelStore.loading}>
+          {modelStore.loading ? "扫描中..." : "扫描"}
         </button>
       {/if}
     </div>
