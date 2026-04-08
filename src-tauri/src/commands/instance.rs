@@ -3,11 +3,11 @@ use std::sync::Arc;
 use tauri::{AppHandle, State};
 
 use crate::commands::proxy::ProxyState;
+use crate::error::AppError;
 use crate::services::config_store::{ConfigStore, InstanceConfig, Preset};
 use crate::services::instance_registry::{InstanceInfo, InstanceRegistry};
 
 /// Start a named model instance.
-/// On success, registers the instance port in the proxy routing table.
 #[tauri::command]
 pub async fn start_instance(
     app: AppHandle,
@@ -15,18 +15,19 @@ pub async fn start_instance(
     registry: State<'_, Arc<InstanceRegistry>>,
     config_store: State<'_, Arc<ConfigStore>>,
     proxy_state: State<'_, Arc<ProxyState>>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let app_config = config_store.load_config();
     let llama_dir = app_config.llama_dir
-        .ok_or("未配置 llama.cpp 路径，请先在设置中配置")?;
+        .ok_or_else(|| AppError::Config {
+            field: "llama_dir".into(),
+            reason: "未配置 llama.cpp 路径，请先在设置中配置".into(),
+        })?;
 
-    // Persist the instance config
-    config_store.save_instance_config(config.clone())?;
+    config_store.save_instance_config(config.clone()).map_err(AppError::from)?;
 
-    // Start the process
-    let port = registry.start(app, &llama_dir, config.clone()).await?;
+    let port = registry.start(app, &llama_dir, config.clone()).await
+        .map_err(|e| AppError::ProcessFailed { reason: e })?;
 
-    // Register in proxy routing table (only for server mode with a valid port)
     if port > 0 {
         proxy_state.register(&config.name, port);
     }
@@ -34,14 +35,14 @@ pub async fn start_instance(
     Ok(())
 }
 
-/// Stop a named model instance and remove it from the proxy routing table.
+/// Stop a named model instance.
 #[tauri::command]
 pub async fn stop_instance(
     name: String,
     registry: State<'_, Arc<InstanceRegistry>>,
     proxy_state: State<'_, Arc<ProxyState>>,
-) -> Result<(), String> {
-    registry.stop(&name).await?;
+) -> Result<(), AppError> {
+    registry.stop(&name).await.map_err(AppError::from)?;
     proxy_state.unregister(&name);
     Ok(())
 }
@@ -50,17 +51,17 @@ pub async fn stop_instance(
 #[tauri::command]
 pub async fn get_all_instances(
     registry: State<'_, Arc<InstanceRegistry>>,
-) -> Result<HashMap<String, InstanceInfo>, String> {
+) -> Result<HashMap<String, InstanceInfo>, AppError> {
     Ok(registry.get_all().await)
 }
 
-/// Delete a saved instance config (does NOT stop a running instance).
+/// Delete a saved instance config.
 #[tauri::command]
 pub async fn delete_instance_config(
     name: String,
     config_store: State<'_, Arc<ConfigStore>>,
-) -> Result<(), String> {
-    config_store.delete_instance_config(&name)
+) -> Result<(), AppError> {
+    config_store.delete_instance_config(&name).map_err(AppError::from)
 }
 
 // ── Per-model presets ─────────────────────────────────────────────────────────
@@ -69,7 +70,7 @@ pub async fn delete_instance_config(
 pub async fn list_model_presets(
     model_filename: String,
     config_store: State<'_, Arc<ConfigStore>>,
-) -> Result<Vec<Preset>, String> {
+) -> Result<Vec<Preset>, AppError> {
     Ok(config_store.list_model_presets(&model_filename))
 }
 
@@ -78,8 +79,8 @@ pub async fn save_model_preset(
     model_filename: String,
     preset: Preset,
     config_store: State<'_, Arc<ConfigStore>>,
-) -> Result<(), String> {
-    config_store.save_model_preset(&model_filename, preset)
+) -> Result<(), AppError> {
+    config_store.save_model_preset(&model_filename, preset).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -87,6 +88,6 @@ pub async fn delete_model_preset(
     model_filename: String,
     name: String,
     config_store: State<'_, Arc<ConfigStore>>,
-) -> Result<(), String> {
-    config_store.delete_model_preset(&model_filename, &name)
+) -> Result<(), AppError> {
+    config_store.delete_model_preset(&model_filename, &name).map_err(AppError::from)
 }

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppConfig,
+  AppError,
   InstanceConfig,
   InstanceMap,
   LlamaInstall,
@@ -8,6 +9,25 @@ import type {
   Preset,
   ScanResult,
 } from "../types";
+
+// ── Error helpers ─────────────────────────────────────────────────────────────
+
+export function parseAppError(e: unknown): AppError {
+  if (e && typeof e === "object" && "type" in e) {
+    return e as AppError;
+  }
+  return { type: "Io", details: { reason: String(e) } };
+}
+
+export function appErrorMessage(e: AppError): string {
+  switch (e.type) {
+    case "NotFound":    return `找不到路径: ${e.details.path ?? ""}`;
+    case "ProcessFailed": return `进程错误: ${e.details.reason ?? ""}`;
+    case "Config":      return `配置错误 [${e.details.field ?? ""}]: ${e.details.reason ?? ""}`;
+    case "Io":          return e.details.reason ?? "未知错误";
+    default:            return JSON.stringify(e);
+  }
+}
 
 // ── Instance commands ─────────────────────────────────────────────────────────
 
@@ -37,6 +57,8 @@ export const deleteModelPreset = (modelFilename: string, name: string) =>
 // ── Model commands ────────────────────────────────────────────────────────────
 
 export const scanModels = () => invoke<ScanResult>("scan_models");
+
+export const scanModelsStream = () => invoke<void>("scan_models_stream");
 
 export const getModelInfo = (path: string) =>
   invoke<ModelInfo>("get_model_info", { path });

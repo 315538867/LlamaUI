@@ -106,6 +106,15 @@ export interface LlamaInstall {
 
 export type PageId = "instances" | "models" | "proxy" | "settings";
 
+// ── Structured IPC error ──────────────────────────────────────────────────────
+
+export type AppErrorType = "NotFound" | "ProcessFailed" | "Config" | "Io";
+
+export interface AppError {
+  type: AppErrorType;
+  details: Record<string, string>;
+}
+
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

@@ -11,7 +11,7 @@ pub struct ModelInfo {
     pub modified: Option<u64>,
 }
 
-/// Scan a directory for .gguf files
+/// Scan a directory for .gguf files (batch, returns all at once).
 pub fn scan_directory(dir: &str) -> Result<Vec<ModelInfo>, String> {
     let path = Path::new(dir);
     if !path.exists() {
@@ -25,6 +25,48 @@ pub fn scan_directory(dir: &str) -> Result<Vec<ModelInfo>, String> {
     scan_recursive(path, &mut models, 0);
     models.sort_by_key(|m| m.name.to_lowercase());
     Ok(models)
+}
+
+/// Scan a directory and invoke `on_model` for each .gguf found.
+/// Returns a list of scan errors (non-fatal).
+pub fn scan_directory_streaming<F>(dir: &str, on_model: F) -> Vec<String>
+where
+    F: Fn(ModelInfo),
+{
+    let path = Path::new(dir);
+    if !path.exists() {
+        return vec![format!("目录不存在: {}", dir)];
+    }
+    if !path.is_dir() {
+        return vec![format!("不是目录: {}", dir)];
+    }
+    scan_recursive_streaming(path, &on_model, 0);
+    vec![]
+}
+
+fn scan_recursive_streaming<F>(dir: &Path, on_model: &F, depth: u32)
+where
+    F: Fn(ModelInfo),
+{
+    if depth >= MAX_DEPTH {
+        return;
+    }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            scan_recursive_streaming(&path, on_model, depth + 1);
+        } else if let Some(ext) = path.extension() {
+            if ext.eq_ignore_ascii_case("gguf") {
+                if let Some(info) = parse_model_file(&path) {
+                    on_model(info);
+                }
+            }
+        }
+    }
 }
 
 const MAX_DEPTH: u32 = 6;

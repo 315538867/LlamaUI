@@ -1,4 +1,5 @@
 mod commands;
+pub mod error;
 pub mod mcp;
 pub mod proxy;
 pub mod services;
@@ -67,6 +68,7 @@ pub fn run() {
             commands::instance::save_model_preset,
             commands::instance::delete_model_preset,
             commands::models::scan_models,
+            commands::models::scan_models_stream,
             commands::models::get_model_info,
             commands::config::get_config,
             commands::config::save_config,
