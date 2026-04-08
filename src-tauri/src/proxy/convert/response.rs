@@ -142,11 +142,20 @@ impl SseConverter {
             }
             "input_json_delta" => {
                 let partial = delta.get("partial_json").and_then(|v| v.as_str()).unwrap_or("");
-                if let State::InToolCall { args_buf, .. } = &mut self.state {
+                if let State::InToolCall { index, id, args_buf, .. } = &mut self.state {
                     args_buf.push_str(partial);
+                    let idx = *index;
+                    let call_id = id.clone();
+                    let data = json!({
+                        "type": "response.function_call_arguments.delta",
+                        "output_index": idx,
+                        "call_id": call_id,
+                        "delta": partial
+                    });
+                    vec![format!("event: response.function_call_arguments.delta\ndata: {}\n\n", data)]
+                } else {
+                    vec![]
                 }
-                // 发送 SSE comment 作为 keepalive，防止长参数流式传输期间触发 idle timeout
-                vec![": tool\n\n".to_string()]
             }
             "thinking_delta" => {
                 // thinking 内容不转发给 Codex，但发 SSE comment 保持连接活跃

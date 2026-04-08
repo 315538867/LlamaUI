@@ -12,45 +12,42 @@ pub fn codex_to_anthropic(req: &Value) -> Value {
             match item.get("type").and_then(|v| v.as_str()) {
                 Some("message") => {
                     let role = item.get("role").and_then(|v| v.as_str()).unwrap_or("user");
-                    let content = convert_message_content(item.get("content"));
+                    let mut content_blocks = convert_message_content_blocks(item.get("content"));
+
+                    // assistant 消息：向前看并合并紧跟的 function_call，避免两条连续 assistant 消息
+                    if role == "assistant" {
+                        while i + 1 < input.len() {
+                            let next = &input[i + 1];
+                            if next.get("type").and_then(|v| v.as_str()) == Some("function_call") {
+                                i += 1;
+                                content_blocks.push(make_tool_use_block(next));
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+
+                    let content: Value = if content_blocks.len() == 1 {
+                        // 单个纯文本块时退化为字符串，保持简洁
+                        if content_blocks[0].get("type").and_then(|v| v.as_str()) == Some("text") {
+                            content_blocks[0]["text"].clone()
+                        } else {
+                            json!(content_blocks)
+                        }
+                    } else {
+                        json!(content_blocks)
+                    };
+
                     messages.push(json!({ "role": role, "content": content }));
                 }
                 Some("function_call") => {
-                    // assistant 发出的工具调用 → assistant message with tool_use block
-                    // 优先取 call_id（调用标识），fallback 到 id（item 标识）
-                    let id = item.get("call_id").or_else(|| item.get("id"))
-                        .and_then(|v| v.as_str()).unwrap_or("unknown");
-                    let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                    let input_obj: Value = item.get("arguments")
-                        .and_then(|v| v.as_str())
-                        .and_then(|s| serde_json::from_str(s).ok())
-                        .unwrap_or(json!({}));
-
-                    // 收集同一批次的所有 function_call（并行工具调用）
-                    let mut tool_use_blocks = vec![json!({
-                        "type": "tool_use",
-                        "id": id,
-                        "name": name,
-                        "input": input_obj
-                    })];
-                    // 向前看，合并连续的 function_call
+                    // 孤立的 function_call（没有前置 assistant message）
+                    let mut tool_use_blocks = vec![make_tool_use_block(item)];
                     while i + 1 < input.len() {
                         let next = &input[i + 1];
                         if next.get("type").and_then(|v| v.as_str()) == Some("function_call") {
                             i += 1;
-                            let nid = next.get("call_id").or_else(|| next.get("id"))
-                                .and_then(|v| v.as_str()).unwrap_or("unknown");
-                            let nname = next.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                            let ninput: Value = next.get("arguments")
-                                .and_then(|v| v.as_str())
-                                .and_then(|s| serde_json::from_str(s).ok())
-                                .unwrap_or(json!({}));
-                            tool_use_blocks.push(json!({
-                                "type": "tool_use",
-                                "id": nid,
-                                "name": nname,
-                                "input": ninput
-                            }));
+                            tool_use_blocks.push(make_tool_use_block(next));
                         } else {
                             break;
                         }
@@ -62,7 +59,6 @@ pub fn codex_to_anthropic(req: &Value) -> Value {
                     let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or("");
                     let content = convert_tool_output(item.get("output"));
 
-                    // 收集同一批次的所有 function_call_output
                     let mut result_blocks = vec![json!({
                         "type": "tool_result",
                         "tool_use_id": call_id,
@@ -127,39 +123,49 @@ pub fn codex_to_anthropic(req: &Value) -> Value {
     anthropic_req
 }
 
-fn convert_message_content(content: Option<&Value>) -> Value {
+/// 将一个 function_call item 转为 Anthropic tool_use block
+fn make_tool_use_block(item: &Value) -> Value {
+    let id = item.get("call_id").or_else(|| item.get("id"))
+        .and_then(|v| v.as_str()).unwrap_or("unknown");
+    let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let input_obj: Value = item.get("arguments")
+        .and_then(|v| v.as_str())
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or(json!({}));
+    json!({
+        "type": "tool_use",
+        "id": id,
+        "name": name,
+        "input": input_obj
+    })
+}
+
+/// 将 message.content 转为 Anthropic content blocks Vec
+fn convert_message_content_blocks(content: Option<&Value>) -> Vec<Value> {
     match content {
-        None => json!(""),
-        Some(Value::String(s)) => json!(s),
+        None => vec![json!({ "type": "text", "text": "" })],
+        Some(Value::String(s)) => vec![json!({ "type": "text", "text": s })],
         Some(Value::Array(arr)) => {
-            // content 数组：[{type:"input_text", text:"..."}, {type:"input_image",...}]
             let blocks: Vec<Value> = arr.iter().filter_map(|block| {
                 match block.get("type").and_then(|v| v.as_str()) {
-                    Some("input_text") | Some("text") => {
-                        let text = block.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                        Some(json!({ "type": "text", "text": text }))
-                    }
-                    Some("output_text") => {
+                    Some("input_text") | Some("text") | Some("output_text") => {
                         let text = block.get("text").and_then(|v| v.as_str()).unwrap_or("");
                         Some(json!({ "type": "text", "text": text }))
                     }
                     _ => None,
                 }
             }).collect();
-
-            if blocks.len() == 1 {
-                if let Some(text) = blocks[0].get("text").and_then(|v| v.as_str()) {
-                    return json!(text);
-                }
+            if blocks.is_empty() {
+                vec![json!({ "type": "text", "text": "" })]
+            } else {
+                blocks
             }
-            json!(blocks)
         }
-        Some(other) => other.clone(),
+        Some(other) => vec![json!({ "type": "text", "text": other.as_str().unwrap_or("") })],
     }
 }
 
 /// 将 Codex function_call_output.output 转换为 Anthropic tool_result content
-/// output 可以是字符串或数组 [{type:"input_text",text:"..."}, ...]
 fn convert_tool_output(output: Option<&Value>) -> Value {
     match output {
         None => json!(""),
@@ -188,7 +194,6 @@ fn convert_tool_output(output: Option<&Value>) -> Value {
 fn convert_tool_def(tool: &Value) -> Value {
     let name = tool.get("name").cloned().unwrap_or(json!(""));
     let description = tool.get("description").cloned().unwrap_or(json!(""));
-    // Codex 用 "parameters"，Anthropic 用 "input_schema"
     let input_schema = tool.get("parameters")
         .or_else(|| tool.get("input_schema"))
         .cloned()
