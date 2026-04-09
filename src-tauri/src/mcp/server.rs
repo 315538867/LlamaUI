@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::services::config_store::{ConfigStore, LaunchParams};
 use crate::services::llama_detector;
-use crate::services::instance_registry::append_draft_args;
+use crate::engine::Engine;
 use crate::services::model_scanner::{self, ModelInfo};
 
 /// MCP Server running over stdio (JSON-RPC 2.0)
@@ -327,7 +327,7 @@ fn handle_tool_call(
                 spec_type: arguments.get("spec_type").and_then(|v| v.as_str()).map(String::from),
                 ..LaunchParams::default()
             };
-            append_draft_args(&mut mcp_args, &draft_params, &caps);
+            Engine::LlamaServer.append_draft_args(&mut mcp_args, &draft_params, &caps);
 
             cmd.args(&mcp_args);
 

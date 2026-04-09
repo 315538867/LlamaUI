@@ -1,4 +1,5 @@
 mod commands;
+pub mod engine;
 pub mod error;
 pub mod mcp;
 pub mod proxy;

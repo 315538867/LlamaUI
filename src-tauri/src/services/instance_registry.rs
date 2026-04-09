@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
@@ -8,8 +7,9 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::{mpsc, Mutex};
 
-use super::config_store::{InstanceConfig, LaunchMode, LaunchParams};
-use super::llama_detector::{self, LlamaCapabilities};
+use crate::engine::Engine;
+use super::config_store::{InstanceConfig, LaunchMode};
+use super::llama_detector;
 
 // ── Public status/info types ──────────────────────────────────────────────────
 
@@ -45,7 +45,6 @@ struct InstanceState {
     info: Arc<Mutex<InstanceInfo>>,
     child_handle: Option<tokio::task::JoinHandle<()>>,
     child_pid: Option<u32>,
-    sp_temp_path: Option<PathBuf>,
 }
 
 // ── Registry ──────────────────────────────────────────────────────────────────
@@ -87,11 +86,8 @@ impl InstanceRegistry {
         // Stop any existing instance with the same name first
         self.stop(&config.name).await.ok();
 
-        let binary = match config.mode {
-            LaunchMode::Server => "llama-server",
-            LaunchMode::Cli => "llama-cli",
-        };
-
+        let engine = Engine::from_config(&config.mode);
+        let binary = engine.binary_name(&config.mode);
         let bin_path = llama_detector::get_binary_path(llama_dir, binary);
         if !bin_path.exists() {
             return Err(format!("找不到 {}: {}", binary, bin_path.display()));
@@ -100,31 +96,6 @@ impl InstanceRegistry {
         // Probe capabilities once — guards below use this to skip unsupported flags
         let caps = llama_detector::probe_capabilities(&bin_path);
 
-        let mut args: Vec<String> = Vec::new();
-        let p = &config.params;
-
-        // Model
-        args.push("-m".into());
-        args.push(config.model_path.clone());
-
-        // GPU layers
-        if let Some(ngl) = p.gpu_layers {
-            args.push("-ngl".into());
-            args.push(ngl.to_string());
-        }
-        // Context size
-        if let Some(ctx) = p.ctx_size {
-            args.push("-c".into());
-            args.push(ctx.to_string());
-        }
-        // Threads
-        if let Some(t) = p.threads {
-            if t > 0 {
-                args.push("-t".into());
-                args.push(t.to_string());
-            }
-        }
-
         // Always random port for server mode
         let actual_port = if matches!(config.mode, LaunchMode::Server) {
             Some(find_free_port())
@@ -132,85 +103,7 @@ impl InstanceRegistry {
             None
         };
 
-        // Server-specific args
-        if matches!(config.mode, LaunchMode::Server) {
-            let port = actual_port.unwrap();
-            args.push("--host".into());
-            args.push("127.0.0.1".into());
-            args.push("--port".into());
-            args.push(port.to_string());
-
-            if caps.supports_flash_attn {
-                args.push("--flash-attn".into());
-                args.push(if p.flash_attn.unwrap_or(false) { "on" } else { "off" }.into());
-            }
-
-            if caps.supports_cont_batching && p.cont_batching.unwrap_or(true) {
-                args.push("--cont-batching".into());
-            }
-            if let Some(b) = p.batch_size {
-                args.push("-b".into());
-                args.push(b.to_string());
-            }
-            if let Some(ub) = p.ubatch_size {
-                args.push("-ub".into());
-                args.push(ub.to_string());
-            }
-            if let Some(np) = p.parallel {
-                args.push("--parallel".into());
-                args.push(np.to_string());
-            }
-            if caps.supports_kv_quant {
-                if let Some(ref kt) = p.cache_type_k {
-                    if !kt.is_empty() {
-                        args.push("--cache-type-k".into());
-                        args.push(kt.clone());
-                    }
-                }
-                if let Some(ref vt) = p.cache_type_v {
-                    if !vt.is_empty() {
-                        args.push("--cache-type-v".into());
-                        args.push(vt.clone());
-                    }
-                }
-            }
-            if p.no_kv_offload.unwrap_or(false) {
-                args.push("-nkvo".into());
-            }
-            if let Some(seed) = p.seed {
-                args.push("--seed".into());
-                args.push(seed.to_string());
-            }
-            if p.mlock.unwrap_or(false) {
-                args.push("--mlock".into());
-            }
-            if p.no_mmap.unwrap_or(false) {
-                args.push("--no-mmap".into());
-            }
-            if p.no_context_shift.unwrap_or(false) {
-                args.push("--no-context-shift".into());
-            }
-            if let Some(k) = p.keep {
-                args.push("--keep".into());
-                args.push(k.to_string());
-            }
-            // Instance-level API key removed — proxy controls all access
-        }
-
-        // System prompt: llama-server 新版本不支持 --system-prompt CLI 参数
-        // system prompt 通过 API 请求的 system 字段传入，此处无需处理
-        let sp_temp_path: Option<PathBuf> = None;
-
-        // Extra args
-        if let Some(ref extra) = p.extra_args {
-            if !extra.trim().is_empty() {
-                parse_shell_args(extra, &mut args)
-                    .map_err(|e| format!("额外参数解析失败: {}", e))?;
-            }
-        }
-
-        // Speculative decoding (draft model) — only if llama-server supports it
-        append_draft_args(&mut args, p, &caps);
+        let args = engine.build_args(&config.model_path, &config.params, &caps, &config.mode, actual_port)?;
 
         // Build initial InstanceInfo
         let info = Arc::new(Mutex::new(InstanceInfo {
@@ -228,7 +121,6 @@ impl InstanceRegistry {
                 info: Arc::clone(&info),
                 child_handle: None,
                 child_pid: None,
-                sp_temp_path: None,
             });
         }
         self.emit_instances(&app).await;
@@ -284,7 +176,7 @@ impl InstanceRegistry {
                         let reader = BufReader::new(stdout);
                         let mut lines = reader.lines();
                         while let Ok(Some(line)) = lines.next_line().await {
-                            maybe_flip_to_running(&line, &info, &app, is_server, &name, &instances).await;
+                            maybe_flip_to_running(&line, &info, &app, is_server, &name, &instances, engine).await;
                             let _ = tx.send(LogEntry { stream: "stdout".into(), line }).await;
                         }
                     }
@@ -302,7 +194,7 @@ impl InstanceRegistry {
                         let reader = BufReader::new(stderr);
                         let mut lines = reader.lines();
                         while let Ok(Some(line)) = lines.next_line().await {
-                            maybe_flip_to_running(&line, &info, &app, is_server, &name, &instances).await;
+                            maybe_flip_to_running(&line, &info, &app, is_server, &name, &instances, engine).await;
                             let _ = tx.send(LogEntry { stream: "stderr".into(), line }).await;
                         }
                     }
@@ -390,7 +282,6 @@ impl InstanceRegistry {
             if let Some(state) = guard.get_mut(&config.name) {
                 state.child_handle = Some(handle);
                 state.child_pid = pid;
-                state.sp_temp_path = sp_temp_path;
             }
         }
 
@@ -416,9 +307,6 @@ impl InstanceRegistry {
                 .args(["/F", "/PID", &pid.to_string(), "/T"]).output(); }
             #[cfg(unix)]
             { unsafe { libc::kill(pid as i32, libc::SIGKILL); } }
-        }
-        if let Some(path) = state.sp_temp_path.take() {
-            let _ = std::fs::remove_file(path);
         }
 
         // Update status to stopped
@@ -497,12 +385,14 @@ async fn maybe_flip_to_running(
     is_server: bool,
     _instance_name: &str,
     instances: &Arc<Mutex<HashMap<String, InstanceState>>>,
+    engine: Engine,
 ) {
     if !is_server { return; }
     let mut guard = info.lock().await;
     if guard.status != InstanceStatus::Starting { return; }
     let bytes = line.as_bytes();
-    let found = bytes.windows(9).any(|w| w.eq_ignore_ascii_case(b"listening"));
+    let pattern = engine.ready_pattern();
+    let found = bytes.windows(pattern.len()).any(|w| w.eq_ignore_ascii_case(pattern));
     if found {
         guard.status = InstanceStatus::Running;
         drop(guard);
@@ -515,30 +405,6 @@ fn find_free_port() -> u16 {
         .and_then(|l| l.local_addr())
         .map(|a| a.port())
         .unwrap_or(18000)
-}
-
-fn parse_shell_args(input: &str, args: &mut Vec<String>) -> Result<(), String> {
-    let mut current = String::new();
-    let mut in_single = false;
-    let mut in_double = false;
-    let mut escape = false;
-
-    for ch in input.chars() {
-        if escape { current.push(ch); escape = false; continue; }
-        match ch {
-            '\\' if !in_single => escape = true,
-            '\'' if !in_double => in_single = !in_single,
-            '"' if !in_single => in_double = !in_double,
-            ' ' | '\t' if !in_single && !in_double => {
-                if !current.is_empty() { args.push(std::mem::take(&mut current)); }
-            }
-            _ => current.push(ch),
-        }
-    }
-    if in_single { return Err("额外参数中存在未闭合的单引号".into()); }
-    if in_double { return Err("额外参数中存在未闭合的双引号".into()); }
-    if !current.is_empty() { args.push(current); }
-    Ok(())
 }
 
 // ── Shared emit helper (usable inside spawn closures) ────────────────────────
@@ -558,43 +424,6 @@ async fn emit_all_instances(
         map.insert(snapshot.config.name.clone(), snapshot);
     }
     app.emit("llama://instances", &map).ok();
-}
-
-/// Append speculative decoding args if supported and configured.
-pub fn append_draft_args(args: &mut Vec<String>, params: &LaunchParams, caps: &LlamaCapabilities) {
-    if let Some(ref draft) = params.model_draft {
-        if !draft.is_empty() && caps.supports_speculative {
-            args.push("--model-draft".into());
-            args.push(draft.clone());
-            if let Some(ngld) = params.gpu_layers_draft {
-                args.push("-ngld".into());
-                args.push(ngld.to_string());
-            }
-            if let Some(dm) = params.draft_max {
-                args.push("--draft".into());
-                args.push(dm.to_string());
-            }
-            if let Some(dmin) = params.draft_min {
-                args.push("--draft-min".into());
-                args.push(dmin.to_string());
-            }
-            if let Some(dpmin) = params.draft_p_min {
-                args.push("--draft-p-min".into());
-                args.push(dpmin.to_string());
-            }
-            if let Some(cd) = params.ctx_size_draft {
-                args.push("-cd".into());
-                args.push(cd.to_string());
-            }
-        }
-    }
-    // --spec-type has its own capability flag (independent of model-draft support)
-    if let Some(ref st) = params.spec_type {
-        if !st.is_empty() && caps.supports_spec_type {
-            args.push("--spec-type".into());
-            args.push(st.clone());
-        }
-    }
 }
 
 // ── Perf-line parsing helpers ─────────────────────────────────────────────────
