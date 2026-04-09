@@ -1,3 +1,4 @@
+pub mod benchmark;
 pub mod config;
 pub mod instance;
 pub mod models;

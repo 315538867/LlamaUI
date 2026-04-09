@@ -106,3 +106,18 @@ export const getProxyStatus = () =>
     allow_external?: boolean;
     routes?: { name: string; port: number }[];
   }>("get_proxy_status");
+
+// ── Benchmark ──────────────────────────────────────────────────────────────────
+
+export interface BenchParams {
+  threads?: number;
+  prompt_tokens: number;
+  gen_tokens: number;
+}
+
+export const runBenchmark = (
+  instanceName: string,
+  modelPath: string,
+  llamaDir: string,
+  params: BenchParams,
+) => invoke<void>("run_benchmark", { instanceName, modelPath, llamaDir, params });

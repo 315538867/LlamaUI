@@ -13,6 +13,7 @@
   import InstanceList from "./InstanceList.svelte";
   import ModelPicker from "./ModelPicker.svelte";
   import ParamsGrid from "./ParamsGrid.svelte";
+  import BenchmarkPanel from "./BenchmarkPanel.svelte";
 
   const instanceStore = getInstanceStore();
   const configStore = getConfigStore();
@@ -22,7 +23,7 @@
   let selectedName = $state<string | null>(null);
   let isCreating = $state(false);
   let createStep = $state<"model" | "config">("model");
-  let activeTab = $state<"config" | "logs">("config");
+  let activeTab = $state<"config" | "logs" | "bench">("config");
   let saving = $state(false);
   let actionErr = $state("");
   let actionErrTimer: ReturnType<typeof setTimeout> | undefined;
@@ -212,6 +213,9 @@
       <div class="tabs">
         <button class="tab" class:active={activeTab === "config"} onclick={() => activeTab = "config"}>配置</button>
         <button class="tab" class:active={activeTab === "logs"}   onclick={() => activeTab = "logs"}>日志</button>
+        {#if !isCreating}
+          <button class="tab" class:active={activeTab === "bench"} onclick={() => activeTab = "bench"}>测试</button>
+        {/if}
         <div class="tab-spacer"></div>
 
         {#if !isCreating}
@@ -267,6 +271,12 @@
             <LogTerminal logs={selectedLogs} />
           {/if}
         </div>
+      {:else if activeTab === "bench"}
+        {#if selectedName}
+          {#key selectedName}
+            <BenchmarkPanel instanceName={selectedName} modelPath={editModelPath} />
+          {/key}
+        {/if}
       {/if}
     {/if}
   </div>

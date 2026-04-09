@@ -80,6 +80,7 @@ pub fn run() {
             commands::config::validate_llama_path,
             commands::proxy::restart_proxy,
             commands::proxy::get_proxy_status,
+            commands::benchmark::run_benchmark,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
