@@ -1,12 +1,76 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::mpsc;
+use std::time::Duration;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LlamaCapabilities {
+    pub version: Option<String>,
+    pub supports_speculative: bool,
+    pub supports_flash_attn: bool,
+    pub supports_kv_quant: bool,
+    pub supports_cont_batching: bool,
+    pub supports_spec_type: bool,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlamaInstall {
     pub path: String,
-    pub version: Option<String>,
     pub has_server: bool,
     pub has_cli: bool,
+    pub capabilities: LlamaCapabilities,
+}
+
+/// Run a command with a timeout, returning combined stdout+stderr output.
+fn run_with_timeout(bin: &Path, arg: &str, timeout: Duration) -> Option<String> {
+    let bin = bin.to_path_buf();
+    let arg = arg.to_string();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let result = Command::new(&bin)
+            .arg(&arg)
+            .output();
+        let _ = tx.send(result);
+    });
+    match rx.recv_timeout(timeout) {
+        Ok(Ok(out)) => {
+            let mut combined = String::from_utf8_lossy(&out.stdout).into_owned();
+            combined.push_str(&String::from_utf8_lossy(&out.stderr));
+            Some(combined)
+        }
+        _ => None,
+    }
+}
+
+/// Probe a llama-server binary for version and supported CLI flags.
+/// Returns all-false capabilities on any failure (no panic).
+pub fn probe_capabilities(bin_path: &Path) -> LlamaCapabilities {
+    let timeout = Duration::from_secs(5);
+
+    // Version: look for first line containing "version" or "build"
+    let version = run_with_timeout(bin_path, "--version", timeout)
+        .and_then(|out| {
+            out.lines()
+                .find(|l| {
+                    let lower = l.to_lowercase();
+                    lower.contains("version") || lower.contains("build")
+                })
+                .map(|l| l.trim().to_string())
+        });
+
+    // Capability flags: probe --help output
+    let help_out = run_with_timeout(bin_path, "--help", timeout)
+        .unwrap_or_default();
+
+    LlamaCapabilities {
+        version,
+        supports_speculative: help_out.contains("--model-draft"),
+        supports_flash_attn: help_out.contains("--flash-attn"),
+        supports_kv_quant: help_out.contains("--cache-type-k"),
+        supports_cont_batching: help_out.contains("--cont-batching"),
+        supports_spec_type: help_out.contains("--spec-type"),
+    }
 }
 
 /// Search common locations for llama.cpp binaries
@@ -135,11 +199,17 @@ fn check_directory(dir: &str) -> Option<LlamaInstall> {
         return None;
     }
 
+    let capabilities = if has_server {
+        probe_capabilities(&dir_path.join(server_name))
+    } else {
+        LlamaCapabilities::default()
+    };
+
     Some(LlamaInstall {
         path: dir_path.to_string_lossy().into_owned(),
-        version: None,
         has_server,
         has_cli,
+        capabilities,
     })
 }
 
@@ -160,22 +230,33 @@ pub fn validate_path(path: &str) -> Result<LlamaInstall, String> {
         if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
             if name.contains("llama-server") || name.contains("llama-cli") {
                 let parent = p.parent().map(|pp| pp.to_string_lossy().to_string()).unwrap_or_default();
+                let capabilities = if name.contains("llama-server") {
+                    probe_capabilities(p)
+                } else {
+                    LlamaCapabilities::default()
+                };
                 return Ok(LlamaInstall {
                     path: parent,
-                    version: None,
                     has_server: name.contains("llama-server"),
                     has_cli: name.contains("llama-cli"),
+                    capabilities,
                 });
             }
         }
         return Err("目录中未找到 llama-server 或 llama-cli".into());
     }
 
+    let capabilities = if has_server {
+        probe_capabilities(&p.join(server_name))
+    } else {
+        LlamaCapabilities::default()
+    };
+
     Ok(LlamaInstall {
         path: path.to_string(),
-        version: None,
         has_server,
         has_cli,
+        capabilities,
     })
 }
 

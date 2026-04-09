@@ -32,6 +32,13 @@ pub struct LaunchParams {
     pub extra_args: Option<String>,
     pub no_context_shift: Option<bool>,
     pub keep: Option<i32>,
+    pub model_draft: Option<String>,
+    pub gpu_layers_draft: Option<i32>,
+    pub draft_max: Option<i32>,
+    pub draft_min: Option<i32>,
+    pub draft_p_min: Option<f32>,
+    pub ctx_size_draft: Option<i32>,
+    pub spec_type: Option<String>,
 }
 
 impl Default for LaunchParams {
@@ -54,6 +61,13 @@ impl Default for LaunchParams {
             extra_args: None,
             no_context_shift: None,
             keep: None,
+            model_draft: None,
+            gpu_layers_draft: None,
+            draft_max: None,
+            draft_min: None,
+            draft_p_min: None,
+            ctx_size_draft: None,
+            spec_type: None,
         }
     }
 }

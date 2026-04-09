@@ -1,5 +1,5 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { InstanceMap, InstanceInfo, LogEvent } from "../types";
+import type { InstanceMap, InstanceInfo, PerfEvent } from "../types";
 import { getAllInstances } from "../services/tauri-bridge";
 
 const LOG_MAX_SIZE = 1000;
@@ -21,36 +21,8 @@ export interface InstancePerfStats {
 
 let perfStats = $state<Record<string, InstancePerfStats>>({});
 
-// 匹配格式（新版 slot print_timing 和旧版 llama_print_timings 均兼容）：
-//   新版：prompt eval time =    7296.97 ms / 25420 tokens (..., 3483.64 tokens per second)
-//   新版：       eval time =   12075.89 ms /   769 tokens (...,   63.68 tokens per second)
-//   旧版：llama_print_timings:        eval time = xxx ms / 512 tokens (..., 63.0 tokens per second)
-//   旧版：llama_print_timings: prompt eval time = xxx ms / 128 tokens (..., 244.6 tokens per second)
-const RE_EVAL = /(?<!prompt )eval time\s*=\s*[\d.]+\s*ms\s*\/\s*(\d+)\s*tokens[^,]+,\s*([\d.]+)\s+tokens per second/;
-const RE_PROMPT = /prompt eval time\s*=\s*[\d.]+\s*ms\s*\/\s*(\d+)\s*tokens[^,]+,\s*([\d.]+)\s+tokens per second/;
-
-function ensurePerf(name: string): InstancePerfStats {
-  if (!perfStats[name]) {
-    perfStats[name] = { evalTps: null, promptTps: null, totalPromptTokens: 0, totalEvalTokens: 0 };
-  }
-  return perfStats[name];
-}
-
-function parsePerfLine(instanceName: string, line: string) {
-  const em = RE_EVAL.exec(line);
-  if (em) {
-    const p = ensurePerf(instanceName);
-    p.totalEvalTokens += parseInt(em[1], 10);
-    p.evalTps = parseFloat(em[2]);
-    return;
-  }
-  const pm = RE_PROMPT.exec(line);
-  if (pm) {
-    const p = ensurePerf(instanceName);
-    p.totalPromptTokens += parseInt(pm[1], 10);
-    p.promptTps = parseFloat(pm[2]);
-  }
-}
+interface LogEntry { stream: string; line: string; }
+interface LogBatchPayload { instance: string; entries: LogEntry[]; }
 
 let _initialized = false;
 let _unlisteners: UnlistenFn[] = [];
@@ -67,13 +39,31 @@ export function getInstanceStore() {
       }
     }).then((fn) => _unlisteners.push(fn));
 
-    listen<LogEvent>("llama://log", (event) => {
-      const { instance, stream, line } = event.payload;
-      if (!logs[instance]) logs[instance] = [];
-      const bucket = logs[instance];
-      if (bucket.length >= LOG_MAX_SIZE) logs[instance] = bucket.slice(LOG_TRIM_SIZE);
-      logs[instance].push({ stream, line, ts: Date.now() });
-      parsePerfLine(instance, line);
+    listen<LogBatchPayload>("llama://log/batch", (event) => {
+      const { instance, entries } = event.payload;
+      const now = Date.now();
+      const incoming = entries.map((e) => ({ stream: e.stream, line: e.line, ts: now }));
+
+      // One reactive assignment — concat the whole batch at once
+      const bucket = logs[instance] ?? [];
+      const merged = bucket.concat(incoming);
+      logs[instance] = merged.length >= LOG_MAX_SIZE
+        ? merged.slice(merged.length - LOG_TRIM_SIZE)
+        : merged;
+    }).then((fn) => _unlisteners.push(fn));
+
+    // Structured perf telemetry from Rust (replaces frontend regex parsing)
+    listen<PerfEvent>("llama://perf", (event) => {
+      const { instance, eval_tps, prompt_tps, eval_tokens, prompt_tokens } = event.payload;
+      const prev = perfStats[instance] ?? {
+        evalTps: null, promptTps: null, totalPromptTokens: 0, totalEvalTokens: 0,
+      };
+      perfStats[instance] = {
+        evalTps: eval_tps ?? prev.evalTps,
+        promptTps: prompt_tps ?? prev.promptTps,
+        totalEvalTokens: prev.totalEvalTokens + (eval_tokens ?? 0),
+        totalPromptTokens: prev.totalPromptTokens + (prompt_tokens ?? 0),
+      };
     }).then((fn) => _unlisteners.push(fn));
 
     // Hydrate from backend on first load

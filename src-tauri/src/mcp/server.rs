@@ -4,7 +4,9 @@ use std::io::{self, BufRead, Write};
 use std::process::Child;
 use std::sync::{Arc, Mutex};
 
-use crate::services::config_store::ConfigStore;
+use crate::services::config_store::{ConfigStore, LaunchParams};
+use crate::services::llama_detector;
+use crate::services::instance_registry::append_draft_args;
 use crate::services::model_scanner::{self, ModelInfo};
 
 /// MCP Server running over stdio (JSON-RPC 2.0)
@@ -49,7 +51,14 @@ fn tool_definitions() -> Value {
                     "model": { "type": "string", "description": "模型名称或完整路径" },
                     "gpu_layers": { "type": "integer", "description": "GPU 卸载层数（99 表示全部卸载，实际上限由模型层数决定）", "default": 99 },
                     "ctx_size": { "type": "integer", "description": "上下文长度", "default": 4096 },
-                    "port": { "type": "integer", "description": "Server 端口", "default": 8000 }
+                    "port": { "type": "integer", "description": "Server 端口", "default": 8000 },
+                    "model_draft": { "type": "string", "description": "草稿模型路径（用于 speculative decoding，需 llama.cpp 支持）" },
+                    "gpu_layers_draft": { "type": "integer", "description": "草稿模型 GPU 卸载层数", "default": 99 },
+                    "draft_max": { "type": "integer", "description": "最大草稿长度（默认 16）" },
+                    "draft_min": { "type": "integer", "description": "最小草稿长度（默认 1）" },
+                    "draft_p_min": { "type": "number", "description": "草稿 token 最小概率（0.0-1.0）" },
+                    "ctx_size_draft": { "type": "integer", "description": "草稿模型上下文大小（默认与主模型相同）" },
+                    "spec_type": { "type": "string", "description": "Speculative decoding 类型：none|ngram-cache|ngram-simple|ngram-map-k|ngram-map-k4v|ngram-mod" }
                 },
                 "required": ["model"]
             }
@@ -272,6 +281,8 @@ fn handle_tool_call(
                 return Err(format!("找不到 llama-server: {}", bin_path.display()));
             }
 
+            let caps = llama_detector::probe_capabilities(&bin_path);
+
             // Resolve model: absolute path first, then search model_dirs by name
             let model_path = if std::path::Path::new(model).exists() {
                 model.to_string()
@@ -291,13 +302,34 @@ fn handle_tool_call(
             };
 
             let mut cmd = std::process::Command::new(&bin_path);
-            cmd.args([
-                "-m", &model_path,
-                "-ngl", &gpu_layers.to_string(),
-                "-c", &ctx_size.to_string(),
-                "--host", "127.0.0.1",
-                "--port", &port.to_string(),
-            ]);
+            let mut mcp_args: Vec<String> = vec![
+                "-m".into(), model_path.clone(),
+                "-ngl".into(), gpu_layers.to_string(),
+                "-c".into(), ctx_size.to_string(),
+                "--host".into(), "127.0.0.1".into(),
+                "--port".into(), port.to_string(),
+            ];
+            if caps.supports_flash_attn {
+                mcp_args.extend_from_slice(&["--flash-attn".into(), "on".into()]);
+            }
+            if caps.supports_cont_batching {
+                mcp_args.push("--cont-batching".into());
+            }
+
+            // Draft model (speculative decoding)
+            let draft_params = LaunchParams {
+                model_draft: arguments.get("model_draft").and_then(|v| v.as_str()).map(String::from),
+                gpu_layers_draft: arguments.get("gpu_layers_draft").and_then(|v| v.as_i64()).map(|v| v as i32),
+                draft_max: arguments.get("draft_max").and_then(|v| v.as_i64()).map(|v| v as i32),
+                draft_min: arguments.get("draft_min").and_then(|v| v.as_i64()).map(|v| v as i32),
+                draft_p_min: arguments.get("draft_p_min").and_then(|v| v.as_f64()).map(|v| v as f32),
+                ctx_size_draft: arguments.get("ctx_size_draft").and_then(|v| v.as_i64()).map(|v| v as i32),
+                spec_type: arguments.get("spec_type").and_then(|v| v.as_str()).map(String::from),
+                ..LaunchParams::default()
+            };
+            append_draft_args(&mut mcp_args, &draft_params, &caps);
+
+            cmd.args(&mcp_args);
 
             #[cfg(windows)]
             {

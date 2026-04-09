@@ -2,13 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 
-use super::config_store::{InstanceConfig, LaunchMode};
-use super::llama_detector;
+use super::config_store::{InstanceConfig, LaunchMode, LaunchParams};
+use super::llama_detector::{self, LlamaCapabilities};
 
 // ── Public status/info types ──────────────────────────────────────────────────
 
@@ -96,6 +97,9 @@ impl InstanceRegistry {
             return Err(format!("找不到 {}: {}", binary, bin_path.display()));
         }
 
+        // Probe capabilities once — guards below use this to skip unsupported flags
+        let caps = llama_detector::probe_capabilities(&bin_path);
+
         let mut args: Vec<String> = Vec::new();
         let p = &config.params;
 
@@ -136,10 +140,12 @@ impl InstanceRegistry {
             args.push("--port".into());
             args.push(port.to_string());
 
-            args.push("--flash-attn".into());
-            args.push(if p.flash_attn.unwrap_or(false) { "on" } else { "off" }.into());
+            if caps.supports_flash_attn {
+                args.push("--flash-attn".into());
+                args.push(if p.flash_attn.unwrap_or(false) { "on" } else { "off" }.into());
+            }
 
-            if p.cont_batching.unwrap_or(true) {
+            if caps.supports_cont_batching && p.cont_batching.unwrap_or(true) {
                 args.push("--cont-batching".into());
             }
             if let Some(b) = p.batch_size {
@@ -154,16 +160,18 @@ impl InstanceRegistry {
                 args.push("--parallel".into());
                 args.push(np.to_string());
             }
-            if let Some(ref kt) = p.cache_type_k {
-                if !kt.is_empty() {
-                    args.push("--cache-type-k".into());
-                    args.push(kt.clone());
+            if caps.supports_kv_quant {
+                if let Some(ref kt) = p.cache_type_k {
+                    if !kt.is_empty() {
+                        args.push("--cache-type-k".into());
+                        args.push(kt.clone());
+                    }
                 }
-            }
-            if let Some(ref vt) = p.cache_type_v {
-                if !vt.is_empty() {
-                    args.push("--cache-type-v".into());
-                    args.push(vt.clone());
+                if let Some(ref vt) = p.cache_type_v {
+                    if !vt.is_empty() {
+                        args.push("--cache-type-v".into());
+                        args.push(vt.clone());
+                    }
                 }
             }
             if p.no_kv_offload.unwrap_or(false) {
@@ -200,6 +208,9 @@ impl InstanceRegistry {
                     .map_err(|e| format!("额外参数解析失败: {}", e))?;
             }
         }
+
+        // Speculative decoding (draft model) — only if llama-server supports it
+        append_draft_args(&mut args, p, &caps);
 
         // Build initial InstanceInfo
         let info = Arc::new(Mutex::new(InstanceInfo {
@@ -259,7 +270,11 @@ impl InstanceRegistry {
             let stdout = child.stdout.take();
             let stderr = child.stderr.take();
 
+            // Shared channel: stdout + stderr both send into this
+            let (tx, mut rx) = mpsc::channel::<LogEntry>(256);
+
             let stdout_task = tokio::spawn({
+                let tx = tx.clone();
                 let app = app_clone.clone();
                 let info = Arc::clone(&info_clone);
                 let name = instance_name.clone();
@@ -270,15 +285,14 @@ impl InstanceRegistry {
                         let mut lines = reader.lines();
                         while let Ok(Some(line)) = lines.next_line().await {
                             maybe_flip_to_running(&line, &info, &app, is_server, &name, &instances).await;
-                            app.emit("llama://log", &LogEvent {
-                                instance: name.clone(), stream: "stdout".into(), line,
-                            }).ok();
+                            let _ = tx.send(LogEntry { stream: "stdout".into(), line }).await;
                         }
                     }
                 }
             });
 
             let stderr_task = tokio::spawn({
+                let tx = tx.clone();
                 let app = app_clone.clone();
                 let info = Arc::clone(&info_clone);
                 let name = instance_name.clone();
@@ -289,17 +303,71 @@ impl InstanceRegistry {
                         let mut lines = reader.lines();
                         while let Ok(Some(line)) = lines.next_line().await {
                             maybe_flip_to_running(&line, &info, &app, is_server, &name, &instances).await;
-                            app.emit("llama://log", &LogEvent {
-                                instance: name.clone(), stream: "stderr".into(), line,
-                            }).ok();
+                            let _ = tx.send(LogEntry { stream: "stderr".into(), line }).await;
                         }
                     }
+                }
+            });
+
+            // Drop the original sender so channel closes when both reader tasks finish
+            drop(tx);
+
+            // Flusher: batch entries every 50ms or when buffer reaches 20
+            let flush_app = app_clone.clone();
+            let flush_name = instance_name.clone();
+            let flusher = tokio::spawn(async move {
+                let mut buf: Vec<LogEntry> = Vec::with_capacity(20);
+                let mut interval = tokio::time::interval(Duration::from_millis(50));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+                loop {
+                    tokio::select! {
+                        entry = rx.recv() => {
+                            match entry {
+                                Some(e) => {
+                                    buf.push(e);
+                                    if buf.len() >= 20 {
+                                        if let Some(perf) = extract_perf_event(&flush_name, &buf) {
+                                            flush_app.emit("llama://perf", &perf).ok();
+                                        }
+                                        flush_app.emit("llama://log/batch", &LogBatchEvent {
+                                            instance: flush_name.clone(),
+                                            entries: std::mem::take(&mut buf),
+                                        }).ok();
+                                    }
+                                }
+                                None => break, // channel closed
+                            }
+                        }
+                        _ = interval.tick() => {
+                            if !buf.is_empty() {
+                                if let Some(perf) = extract_perf_event(&flush_name, &buf) {
+                                    flush_app.emit("llama://perf", &perf).ok();
+                                }
+                                flush_app.emit("llama://log/batch", &LogBatchEvent {
+                                    instance: flush_name.clone(),
+                                    entries: std::mem::take(&mut buf),
+                                }).ok();
+                            }
+                        }
+                    }
+                }
+                // Final flush — emit any remaining entries after channel closes
+                if !buf.is_empty() {
+                    if let Some(perf) = extract_perf_event(&flush_name, &buf) {
+                        flush_app.emit("llama://perf", &perf).ok();
+                    }
+                    flush_app.emit("llama://log/batch", &LogBatchEvent {
+                        instance: flush_name.clone(),
+                        entries: buf,
+                    }).ok();
                 }
             });
 
             let status = child.wait().await;
             stdout_task.await.ok();
             stderr_task.await.ok();
+            flusher.await.ok();
 
             // Update final status
             {
@@ -400,10 +468,24 @@ impl InstanceRegistry {
 // ── Event types ───────────────────────────────────────────────────────────────
 
 #[derive(Clone, Serialize)]
-pub struct LogEvent {
-    pub instance: String,
+pub struct LogEntry {
     pub stream: String,
     pub line: String,
+}
+
+#[derive(Clone, Serialize)]
+pub struct LogBatchEvent {
+    pub instance: String,
+    pub entries: Vec<LogEntry>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct PerfEvent {
+    pub instance: String,
+    pub eval_tps: Option<f64>,
+    pub prompt_tps: Option<f64>,
+    pub eval_tokens: Option<u32>,
+    pub prompt_tokens: Option<u32>,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -476,4 +558,96 @@ async fn emit_all_instances(
         map.insert(snapshot.config.name.clone(), snapshot);
     }
     app.emit("llama://instances", &map).ok();
+}
+
+/// Append speculative decoding args if supported and configured.
+pub fn append_draft_args(args: &mut Vec<String>, params: &LaunchParams, caps: &LlamaCapabilities) {
+    if let Some(ref draft) = params.model_draft {
+        if !draft.is_empty() && caps.supports_speculative {
+            args.push("--model-draft".into());
+            args.push(draft.clone());
+            if let Some(ngld) = params.gpu_layers_draft {
+                args.push("-ngld".into());
+                args.push(ngld.to_string());
+            }
+            if let Some(dm) = params.draft_max {
+                args.push("--draft".into());
+                args.push(dm.to_string());
+            }
+            if let Some(dmin) = params.draft_min {
+                args.push("--draft-min".into());
+                args.push(dmin.to_string());
+            }
+            if let Some(dpmin) = params.draft_p_min {
+                args.push("--draft-p-min".into());
+                args.push(dpmin.to_string());
+            }
+            if let Some(cd) = params.ctx_size_draft {
+                args.push("-cd".into());
+                args.push(cd.to_string());
+            }
+        }
+    }
+    // --spec-type has its own capability flag (independent of model-draft support)
+    if let Some(ref st) = params.spec_type {
+        if !st.is_empty() && caps.supports_spec_type {
+            args.push("--spec-type".into());
+            args.push(st.clone());
+        }
+    }
+}
+
+// ── Perf-line parsing helpers ─────────────────────────────────────────────────
+
+/// Scan a batch of log entries for timing lines; return a `PerfEvent` if found.
+fn extract_perf_event(instance: &str, buf: &[LogEntry]) -> Option<PerfEvent> {
+    let mut eval_tps: Option<f64> = None;
+    let mut prompt_tps: Option<f64> = None;
+    let mut eval_tokens: Option<u32> = None;
+    let mut prompt_tokens: Option<u32> = None;
+
+    for entry in buf {
+        let line = &entry.line;
+        if line.contains("prompt eval time") {
+            if let Some((tok, tps)) = parse_timing_line(line) {
+                prompt_tokens = Some(tok);
+                prompt_tps = Some(tps);
+            }
+        } else if line.contains("eval time") {
+            if let Some((tok, tps)) = parse_timing_line(line) {
+                eval_tokens = Some(tok);
+                eval_tps = Some(tps);
+            }
+        }
+    }
+
+    if eval_tps.is_some() || prompt_tps.is_some() {
+        Some(PerfEvent {
+            instance: instance.to_string(),
+            eval_tps,
+            prompt_tps,
+            eval_tokens,
+            prompt_tokens,
+        })
+    } else {
+        None
+    }
+}
+
+/// Extract (tokens, tps) from a timing line of the form:
+///   "… / 769 tokens (…, 63.68 tokens per second)"
+fn parse_timing_line(line: &str) -> Option<(u32, f64)> {
+    // Token count: find "/ " then parse until " tokens"
+    let slash_pos = line.find("/ ")?;
+    let after_slash = &line[slash_pos + 2..];
+    let tok_end = after_slash.find(" tokens")?;
+    let tokens: u32 = after_slash[..tok_end].trim().parse().ok()?;
+
+    // TPS: find last ", " then parse until " tokens per second"
+    let comma_pos = line.rfind(", ")?;
+    let after_comma = &line[comma_pos + 2..];
+    let tps_end = after_comma.find(" tokens per second")?;
+    let tps: f64 = after_comma[..tps_end].trim().parse().ok()?;
+
+    Some((tokens, tps))
 }

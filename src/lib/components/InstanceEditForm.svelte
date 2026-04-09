@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { LaunchParams, InstanceInfo } from "../types";
   import { getModelStore } from "../stores/models.svelte";
+  import { open } from "@tauri-apps/plugin-dialog";
 
   interface Props {
     editName: string;
@@ -36,6 +37,20 @@
 
   function numInput(key: keyof LaunchParams, raw: string) {
     setParam(key, raw === "" ? null : parseInt(raw) as any);
+  }
+
+  function numFloat(key: keyof LaunchParams, raw: string) {
+    setParam(key, raw === "" ? null : parseFloat(raw) as any);
+  }
+
+  async function browseDraftModel() {
+    const result = await open({
+      filters: [{ name: "GGUF", extensions: ["gguf"] }],
+      title: "选择草稿模型",
+    });
+    if (result && typeof result === "string") {
+      setParam("model_draft", result);
+    }
   }
 </script>
 
@@ -264,6 +279,85 @@
       oninput={(e) => setParam("extra_args", (e.target as HTMLInputElement).value || null)}
       placeholder="如 --no-mmap --mlock"
     />
+  </div>
+
+  <div class="section-divider">Speculative Decoding（草稿模型）</div>
+  <div class="field-hint" style="padding-left:0; margin-bottom:4px;">
+    配置后将在启动时自动检测兼容性；不支持 speculative decoding 的 llama.cpp 版本会跳过这两个参数。
+  </div>
+
+  <div class="field-row">
+    <label class="field-label" for="edit-draft-model">草稿模型路径</label>
+    <div class="model-picker">
+      <input id="edit-draft-model" class="field-input flex-1" type="text"
+        value={editParams.model_draft ?? ""}
+        oninput={(e) => setParam("model_draft", (e.target as HTMLInputElement).value || null)}
+        placeholder="/path/to/draft.gguf（可选）"
+      />
+      <button class="btn-ghost" onclick={browseDraftModel}>浏览</button>
+    </div>
+  </div>
+
+  <div class="field-row">
+    <label class="field-label" for="edit-ngld">草稿 GPU 层数</label>
+    <input id="edit-ngld" class="field-input w-num" type="number"
+      value={editParams.gpu_layers_draft ?? ""}
+      oninput={(e) => numInput("gpu_layers_draft", (e.target as HTMLInputElement).value)}
+      placeholder="同主模型"
+    />
+  </div>
+
+  <div class="field-row">
+    <label class="field-label" for="edit-draft-max">最大草稿长度</label>
+    <input id="edit-draft-max" class="field-input w-num" type="number"
+      value={editParams.draft_max ?? ""}
+      oninput={(e) => numInput("draft_max", (e.target as HTMLInputElement).value)}
+      placeholder="16"
+    />
+  </div>
+
+  <div class="field-row">
+    <label class="field-label" for="edit-draft-min">最小草稿长度</label>
+    <input id="edit-draft-min" class="field-input w-num" type="number"
+      value={editParams.draft_min ?? ""}
+      oninput={(e) => numInput("draft_min", (e.target as HTMLInputElement).value)}
+      placeholder="1"
+    />
+  </div>
+
+  <div class="field-row">
+    <label class="field-label" for="edit-draft-pmin">草稿最小概率</label>
+    <input id="edit-draft-pmin" class="field-input w-num" type="number"
+      step="0.01" min="0" max="1"
+      value={editParams.draft_p_min ?? ""}
+      oninput={(e) => numFloat("draft_p_min", (e.target as HTMLInputElement).value)}
+      placeholder="0.0"
+    />
+  </div>
+
+  <div class="field-row">
+    <label class="field-label" for="edit-ctx-draft">草稿上下文长度</label>
+    <input id="edit-ctx-draft" class="field-input w-num" type="number"
+      value={editParams.ctx_size_draft ?? ""}
+      oninput={(e) => numInput("ctx_size_draft", (e.target as HTMLInputElement).value)}
+      placeholder="同主模型"
+    />
+  </div>
+
+  <div class="field-row">
+    <label class="field-label" for="edit-spec-type">Speculative 类型</label>
+    <select id="edit-spec-type" class="field-select" style="flex:1;"
+      value={editParams.spec_type ?? ""}
+      onchange={(e) => { const v = (e.target as HTMLSelectElement).value; setParam("spec_type", v === "" ? null : v); }}
+    >
+      <option value="">默认</option>
+      <option value="none">none</option>
+      <option value="ngram-cache">ngram-cache</option>
+      <option value="ngram-simple">ngram-simple</option>
+      <option value="ngram-map-k">ngram-map-k</option>
+      <option value="ngram-map-k4v">ngram-map-k4v</option>
+      <option value="ngram-mod">ngram-mod</option>
+    </select>
   </div>
 
   {#if selectedInfo?.status === "running"}

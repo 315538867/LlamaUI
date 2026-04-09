@@ -2,7 +2,7 @@
   import { getConfigStore } from "../stores/config.svelte";
   import { detectLlama, validateLlamaPath } from "../services/tauri-bridge";
   import { open } from "@tauri-apps/plugin-dialog";
-  import type { LlamaInstall } from "../types";
+  import type { LlamaInstall, LlamaCapabilities } from "../types";
   import { logger } from "../utils/logger";
 
   const configStore = getConfigStore();
@@ -142,6 +142,15 @@
                 {[install.has_server ? "server" : "", install.has_cli ? "cli" : ""].filter(Boolean).join(" + ")}
               </span>
             </button>
+            {#if install.capabilities}
+              <div class="caps-row">
+                <span class="caps-version">{install.capabilities.version ?? "版本未知"}</span>
+                {#if install.capabilities.supports_flash_attn}<span class="cap-badge">Flash-Attn</span>{/if}
+                {#if install.capabilities.supports_cont_batching}<span class="cap-badge">ContBatch</span>{/if}
+                {#if install.capabilities.supports_kv_quant}<span class="cap-badge">KV量化</span>{/if}
+                {#if install.capabilities.supports_speculative}<span class="cap-badge cap-badge-special">Speculative</span>{/if}
+              </div>
+            {/if}
           {/each}
         </div>
       {/if}
@@ -344,6 +353,25 @@
 .detect-item:hover { background: var(--bg-hover); }
 .detect-path { font-size: 11px; color: var(--text-base); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .detect-caps { font-size: 10px; color: var(--text-muted); flex-shrink: 0; margin-left: 8px; }
+
+/* ─ Capability badges ─ */
+.caps-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px 5px;
+  flex-wrap: wrap;
+}
+.caps-version { font-size: 10px; color: var(--text-muted); margin-right: 2px; }
+.cap-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-overlay);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+.cap-badge-special { background: rgba(99,102,241,0.1); color: #818cf8; border-color: rgba(99,102,241,0.25); }
 
 /* ─ Dirs ─ */
 .empty-hint { font-size: 11px; color: var(--text-muted); }

@@ -20,6 +20,13 @@ export interface LaunchParams {
   extra_args: string | null;
   no_context_shift: boolean | null;
   keep: number | null;
+  model_draft: string | null;
+  gpu_layers_draft: number | null;
+  draft_max: number | null;
+  draft_min: number | null;
+  draft_p_min: number | null;
+  ctx_size_draft: number | null;
+  spec_type: string | null;
 }
 
 // ── Instance types ────────────────────────────────────────────────────────────
@@ -45,16 +52,32 @@ export type InstanceMap = Record<string, InstanceInfo>;
 
 // ── Log events ────────────────────────────────────────────────────────────────
 
-export interface LogEvent {
-  instance: string;
-  stream: "stdout" | "stderr";
-  line: string;
-}
-
 export interface ProxyLogEvent {
   timestamp: number;
   level: "info" | "warn" | "error";
   message: string;
+}
+
+// ── Perf events ───────────────────────────────────────────────────────────────
+
+export interface PerfEvent {
+  instance: string;
+  eval_tps: number | null;
+  prompt_tps: number | null;
+  eval_tokens: number | null;
+  prompt_tokens: number | null;
+}
+
+// ── Benchmark events ──────────────────────────────────────────────────────────
+
+export interface BenchmarkLine {
+  instance: string;
+  line: string;
+}
+
+export interface BenchmarkDone {
+  instance: string;
+  exit_code: number;
 }
 
 // ── Model types ───────────────────────────────────────────────────────────────
@@ -95,11 +118,20 @@ export interface Preset {
   mode: LaunchMode;
 }
 
+export interface LlamaCapabilities {
+  version: string | null;
+  supports_speculative: boolean;
+  supports_flash_attn: boolean;
+  supports_kv_quant: boolean;
+  supports_cont_batching: boolean;
+  supports_spec_type: boolean;
+}
+
 export interface LlamaInstall {
   path: string;
-  version: string | null;
   has_server: boolean;
   has_cli: boolean;
+  capabilities: LlamaCapabilities;
 }
 
 // ── UI types ──────────────────────────────────────────────────────────────────
@@ -136,6 +168,13 @@ export const DEFAULT_PARAMS: LaunchParams = {
   extra_args: null,
   no_context_shift: null,
   keep: null,
+  model_draft: null,
+  gpu_layers_draft: null,
+  draft_max: null,
+  draft_min: null,
+  draft_p_min: null,
+  ctx_size_draft: null,
+  spec_type: null,
 };
 
 export const PARAM_LABELS: Record<string, string> = {
